@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>BankELi — 12-Month Average Bank Balance & Loan Eligibility Workbench</title>
+  <title>BankELi — Real-Time Indian Bank Statement PDF Parser & Loan Eligibility Workbench</title>
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Google Fonts: Inter & JetBrains Mono -->
@@ -105,7 +105,7 @@
         <div>
           <div class="flex items-center gap-2">
             <h1 class="text-lg font-bold tracking-tight text-white">BankELi</h1>
-            <span class="text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-400/30">
+            <span id="headerGridBadge" class="text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-400/30">
               5th • 15th • 25th EOD Engine
             </span>
           </div>
@@ -115,6 +115,12 @@
 
       <!-- Quick Action Toolbar -->
       <div class="flex flex-wrap items-center gap-2 sm:gap-2.5">
+        <button onclick="switchMainTab('BOUNCES')" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-rose-500/20 text-rose-200 hover:bg-rose-500/30 border border-rose-400/30 transition cursor-pointer">
+          <i data-lucide="shield-alert" class="w-4 h-4 text-rose-300"></i>
+          <span>Bounces & Red Flags</span>
+          <span id="headerBounceBadge" class="ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-rose-600 text-white font-mono">0</span>
+        </button>
+
         <button onclick="switchMainTab('TRANSACTIONS')" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-indigo-600/20 text-indigo-200 hover:bg-indigo-600/30 border border-indigo-400/30 transition cursor-pointer">
           <i data-lucide="list-checks" class="w-4 h-4 text-indigo-300"></i>
           <span>Extracted Transactions</span>
@@ -143,8 +149,8 @@
   <div class="hidden print-only border-b-2 border-slate-900 pb-4 mb-6 px-6 pt-4">
     <div class="flex justify-between items-start">
       <div>
-        <h1 class="text-2xl font-extrabold text-slate-900 uppercase tracking-tight">BANKING ABB & LOAN ELIGIBILITY WORKSHEET (CAM)</h1>
-        <p class="text-xs text-slate-600 mt-0.5">Computation Method: Standard 5th, 15th & 25th End-of-Day (EOD) Closing Balance Average</p>
+        <h1 class="text-2xl font-extrabold text-slate-900 uppercase tracking-tight">BankELi — BANKING ABB & LOAN ELIGIBILITY WORKSHEET (CAM)</h1>
+        <p id="printMethodSubtitle" class="text-xs text-slate-600 mt-0.5">Computation Method: Standard 5th, 15th & 25th End-of-Day (EOD) Closing Balance Average</p>
       </div>
       <div class="text-right text-xs text-slate-600">
         <div class="font-bold text-slate-900" id="printDateLabel">Date: --</div>
@@ -196,9 +202,31 @@
           <div class="flex items-center justify-between border-b border-slate-200 pb-2">
             <span class="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
               <i data-lucide="sliders-horizontal" class="w-4 h-4 text-indigo-600"></i>
-              <span>PDF Column & Order Controls</span>
+              <span>ABB Date Grid & PDF Controls</span>
             </span>
             <span class="text-[11px] text-slate-500">Changes re-evaluate immediately</span>
+          </div>
+
+          <!-- ABB Date Grid Selector Row -->
+          <div class="grid grid-cols-1 sm:grid-cols-12 gap-2.5 bg-indigo-50/70 p-2.5 rounded-xl border border-indigo-200/80">
+            <div class="sm:col-span-7">
+              <label for="abbDateGridSelect" class="block text-[11px] font-bold uppercase tracking-wider text-indigo-900 mb-1">
+                ABB Date Grid Rule (Lender Policy)
+              </label>
+              <select id="abbDateGridSelect" onchange="handleDateGridRuleChange()" class="w-full px-2.5 py-1.5 rounded-lg border border-indigo-300 text-xs font-bold text-indigo-950 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                <option value="5,15,25" selected>5th, 15th & 25th (3 Points — Standard)</option>
+                <option value="1,10,20">1st, 10th & 20th (3 Points)</option>
+                <option value="10,20,30">10th, 20th & 30th/EOM (3 Points)</option>
+                <option value="5,10,15,20,25,30">5th, 10th, 15th, 20th, 25th & 30th (6 Points — NBFC)</option>
+                <option value="CUSTOM">Custom Dates (e.g., 3, 13, 23 or 7, 14, 21, 28)</option>
+              </select>
+            </div>
+            <div class="sm:col-span-5">
+              <label for="customGridDatesInput" class="block text-[11px] font-bold uppercase tracking-wider text-indigo-900 mb-1">
+                Active Days of Month
+              </label>
+              <input id="customGridDatesInput" type="text" value="5, 15, 25" onchange="applyCustomGridDatesInput()" placeholder="e.g. 3, 13, 23" class="w-full px-2.5 py-1.5 rounded-lg border border-indigo-300 text-xs font-mono font-bold text-indigo-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
           </div>
 
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -379,99 +407,128 @@
       </div>
     </section>
 
-    <!-- 3. KPI Summary Cards (4 Cards) -->
-    <section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 print-break-inside-avoid">
+    <!-- 3. KPI Summary Cards (5 Cards: Overall ABB, 6M Trend, Bounces & Penal Risk, Business Credit Turnover, Max Loan Eligibility) -->
+    <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 print-break-inside-avoid">
       <!-- Card 1: 12-Month Average Bank Balance -->
-      <div class="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white rounded-2xl p-5 shadow-md border border-indigo-500/20 relative overflow-hidden print-shadow-none">
+      <div class="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white rounded-2xl p-4 sm:p-5 shadow-md border border-indigo-500/20 relative overflow-hidden print-shadow-none">
         <div class="flex items-start justify-between">
           <div>
-            <span class="text-[11px] font-bold uppercase tracking-wider text-indigo-300">Overall Average Bank Balance (ABB)</span>
-            <div id="kpiOverallABB" class="text-2xl sm:text-3xl font-extrabold font-mono tracking-tight mt-1 text-white">₹ 0.00</div>
+            <span class="text-[11px] font-bold uppercase tracking-wider text-indigo-300">Overall Average Bank Balance</span>
+            <div id="kpiOverallABB" class="text-2xl font-extrabold font-mono tracking-tight mt-1 text-white">₹ 0.00</div>
           </div>
-          <div class="w-10 h-10 rounded-xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center no-print">
-            <i data-lucide="wallet" class="w-5 h-5 text-indigo-300"></i>
+          <div class="w-9 h-9 rounded-xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center no-print">
+            <i data-lucide="wallet" class="w-4 h-4 text-indigo-300"></i>
           </div>
         </div>
         <div class="mt-3 pt-3 border-t border-white/10 flex items-center justify-between text-xs">
           <span id="kpiOverallLakhs" class="font-semibold text-emerald-300">₹ 0.00 Lakhs</span>
-          <span id="kpiMonthsCountBadge" class="text-slate-300 font-medium">0 Active Months</span>
+          <span id="kpiMonthsCountBadge" class="text-slate-300 font-medium">0 Active Mos</span>
         </div>
       </div>
 
-      <!-- Card 2: Last 6-Month ABB vs First Half ABB -->
-      <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200/80 flex flex-col justify-between print-shadow-none">
+      <!-- Card 2: Last 6-Month ABB & Peak/Low -->
+      <div class="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200/80 flex flex-col justify-between print-shadow-none">
         <div class="flex items-start justify-between">
           <div>
-            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Last 6-Month ABB (Recent Trend)</span>
-            <div id="kpiLast6MABB" class="text-2xl font-extrabold font-mono tracking-tight mt-1 text-slate-900">₹ 0.00</div>
+            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Last 6-Month ABB</span>
+            <div id="kpiLast6MABB" class="text-xl sm:text-2xl font-extrabold font-mono tracking-tight mt-1 text-slate-900">₹ 0.00</div>
           </div>
-          <span id="kpi6MTrendBadge" class="px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700">
+          <span id="kpi6MTrendBadge" class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-700">
             0.0%
           </span>
         </div>
-        <div class="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-          <span>Last 3M ABB: <strong id="kpiLast3MABB" class="text-slate-700 font-mono">₹ 0</strong></span>
-          <span id="kpiTrendLabel" class="font-medium text-slate-600">Upload PDF to analyze</span>
+        <div class="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+          <span>3M ABB: <strong id="kpiLast3MABB" class="text-slate-700 font-mono">₹ 0</strong></span>
+          <span>Peak: <strong id="kpiPeakABB" class="text-emerald-700 font-mono">₹ 0</strong> (<span id="kpiPeakMonth">--</span>)</span>
+        </div>
+        <div class="hidden">
+          <span id="kpiLowABB"></span><span id="kpiLowMonth"></span><span id="kpiLowestSinglePoint"></span><span id="kpiTrendLabel"></span>
         </div>
       </div>
 
-      <!-- Card 3: Highest & Lowest Monthly ABB -->
-      <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200/80 flex flex-col justify-between print-shadow-none">
-        <div class="grid grid-cols-2 gap-3">
+      <!-- Card 3: Cheque Bounce, ECS/NACH Return & Penal Risk Detector -->
+      <div onclick="switchMainTab('BOUNCES')" class="bg-white hover:bg-rose-50/30 rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200/80 flex flex-col justify-between cursor-pointer transition print-shadow-none">
+        <div class="flex items-start justify-between gap-2">
           <div>
-            <span class="text-[10px] font-bold uppercase tracking-wider text-emerald-600 flex items-center gap-1">
-              <i data-lucide="trending-up" class="w-3.5 h-3.5"></i> Peak Month ABB
+            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
+              <i data-lucide="shield-alert" class="w-3.5 h-3.5 text-rose-600"></i>
+              <span>Bounce & Return Risk</span>
             </span>
-            <div id="kpiPeakABB" class="text-base sm:text-lg font-extrabold font-mono text-slate-900 mt-1">₹ 0</div>
-            <div id="kpiPeakMonth" class="text-[11px] text-slate-500 font-medium mt-0.5">--</div>
+            <div class="flex items-baseline gap-2 mt-1">
+              <span id="kpiBounce6MCount" class="text-xl sm:text-2xl font-extrabold font-mono text-slate-900">0</span>
+              <span class="text-xs font-semibold text-slate-500">in 6M</span>
+              <span class="text-xs text-slate-400">•</span>
+              <span id="kpiBounce12MCount" class="text-sm font-bold font-mono text-slate-700">0 in 12M</span>
+            </div>
           </div>
-          <div class="border-l border-slate-200 pl-3">
-            <span class="text-[10px] font-bold uppercase tracking-wider text-rose-600 flex items-center gap-1">
-              <i data-lucide="trending-down" class="w-3.5 h-3.5"></i> Lowest Month ABB
-            </span>
-            <div id="kpiLowABB" class="text-base sm:text-lg font-extrabold font-mono text-slate-900 mt-1">₹ 0</div>
-            <div id="kpiLowMonth" class="text-[11px] text-slate-500 font-medium mt-0.5">--</div>
-          </div>
+          <span id="kpiBounceRiskBadge" class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+            Clean (0)
+          </span>
         </div>
-        <div class="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs">
-          <span class="text-slate-500">Min Single EOD Point:</span>
-          <span id="kpiLowestSinglePoint" class="font-mono font-semibold text-slate-800">₹ 0</span>
+        <div class="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+          <span>Penal / Min Bal: <strong id="kpiPenalCount" class="font-mono text-slate-700">0</strong></span>
+          <span class="text-indigo-600 font-semibold no-print">Inspect Flags →</span>
         </div>
       </div>
 
-      <!-- Card 4: Maximum Loan Eligibility Quick View -->
-      <div class="bg-gradient-to-br from-emerald-600 to-teal-700 text-white rounded-2xl p-5 shadow-md flex flex-col justify-between print-shadow-none">
+      <!-- Card 4: Business Banking Turnover (12M Credit Summation) -->
+      <div class="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200/80 flex flex-col justify-between print-shadow-none">
+        <div class="flex items-start justify-between">
+          <div>
+            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
+              <i data-lucide="arrow-down-left" class="w-3.5 h-3.5 text-emerald-600"></i>
+              <span>Business Credit Turnover</span>
+            </span>
+            <div id="kpiTotalCreditTurnover" class="text-xl sm:text-2xl font-extrabold font-mono tracking-tight mt-1 text-slate-900">₹ 0</div>
+          </div>
+          <span id="kpiCreditCountBadge" class="px-2 py-0.5 rounded-full text-[11px] font-mono font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+            0 Cr Txns
+          </span>
+        </div>
+        <div class="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+          <span>Monthly Avg Cr: <strong id="kpiMonthlyAvgCredits" class="font-mono text-slate-800">₹ 0</strong></span>
+          <span id="kpiTurnoverLakhsBadge" class="font-semibold text-emerald-700">0.00 L</span>
+        </div>
+      </div>
+
+      <!-- Card 5: Maximum Loan Eligibility Quick View -->
+      <div class="bg-gradient-to-br from-emerald-600 to-teal-700 text-white rounded-2xl p-4 sm:p-5 shadow-md flex flex-col justify-between print-shadow-none">
         <div class="flex items-start justify-between">
           <div>
             <span class="text-[11px] font-bold uppercase tracking-wider text-emerald-100">Est. Max Loan Eligibility</span>
-            <div id="kpiMaxLoanTop" class="text-2xl sm:text-3xl font-extrabold font-mono tracking-tight mt-1 text-white">₹ 0</div>
+            <div id="kpiMaxLoanTop" class="text-2xl font-extrabold font-mono tracking-tight mt-1 text-white">₹ 0</div>
           </div>
-          <div class="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center no-print">
-            <i data-lucide="badge-indian-rupee" class="w-5 h-5 text-white"></i>
+          <div class="w-9 h-9 rounded-xl bg-white/15 flex items-center justify-center no-print">
+            <i data-lucide="badge-indian-rupee" class="w-4 h-4 text-white"></i>
           </div>
         </div>
         <div class="mt-3 pt-3 border-t border-white/15 flex items-center justify-between text-xs">
-          <span>Max Eligible EMI: <strong id="kpiEligibleEMITop" class="font-mono text-emerald-100">₹ 0/mo</strong></span>
+          <span>Max EMI: <strong id="kpiEligibleEMITop" class="font-mono text-emerald-100">₹ 0/mo</strong></span>
           <span id="kpiLoanLakhsTop" class="font-bold bg-white/20 px-2 py-0.5 rounded text-white">0.00 L</span>
         </div>
       </div>
     </section>
 
-    <!-- 4. 3-Tab Navigation Bar (Hidden in Print) -->
+    <!-- 4. 4-Tab Navigation Bar (Hidden in Print) -->
     <div class="border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 no-print">
       <div class="flex flex-wrap items-center gap-2">
         <button id="tabBtn_WORKSHEET" onclick="switchMainTab('WORKSHEET')" class="px-4 py-2.5 rounded-t-xl text-xs sm:text-sm font-bold border-b-2 border-indigo-600 text-indigo-700 bg-white flex items-center gap-2 cursor-pointer transition">
           <i data-lucide="table-2" class="w-4 h-4"></i>
-          <span>1. 12-Month ABB Worksheet (5th, 15th & 25th)</span>
+          <span id="tabWorksheetTitle">1. 12-Month ABB Worksheet (5th, 15th & 25th)</span>
+        </button>
+        <button id="tabBtn_BOUNCES" onclick="switchMainTab('BOUNCES')" class="px-4 py-2.5 rounded-t-xl text-xs sm:text-sm font-semibold border-b-2 border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-100 flex items-center gap-2 cursor-pointer transition">
+          <i data-lucide="shield-alert" class="w-4 h-4 text-rose-600"></i>
+          <span>2. Bounces, ECS Returns & EMIs</span>
+          <span id="tabBounceCountPill" class="px-2 py-0.5 rounded-full text-[11px] font-mono bg-rose-100 text-rose-800 font-bold">0</span>
         </button>
         <button id="tabBtn_TRANSACTIONS" onclick="switchMainTab('TRANSACTIONS')" class="px-4 py-2.5 rounded-t-xl text-xs sm:text-sm font-semibold border-b-2 border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-100 flex items-center gap-2 cursor-pointer transition">
           <i data-lucide="search-check" class="w-4 h-4 text-emerald-600"></i>
-          <span>2. Extracted Raw Transactions Inspector</span>
+          <span>3. Extracted Raw Transactions Inspector</span>
           <span id="tabTxCountPill" class="px-2 py-0.5 rounded-full text-[11px] font-mono bg-slate-200 text-slate-800">0</span>
         </button>
         <button id="tabBtn_DEBUGGER" onclick="switchMainTab('DEBUGGER')" class="px-4 py-2.5 rounded-t-xl text-xs sm:text-sm font-semibold border-b-2 border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-100 flex items-center gap-2 cursor-pointer transition">
           <i data-lucide="terminal" class="w-4 h-4 text-amber-600"></i>
-          <span>3. Raw PDF Text Debugger</span>
+          <span>4. Raw PDF Text Debugger</span>
           <span id="tabPagesCountPill" class="px-2 py-0.5 rounded-full text-[11px] font-mono bg-slate-200 text-slate-800">0 Pgs</span>
         </button>
       </div>
@@ -491,13 +548,13 @@
             <div class="p-4 sm:p-5 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <div class="flex items-center gap-2">
-                  <h2 class="text-base font-bold text-slate-900">Monthly ABB Computation Schedule (5th, 15th & 25th EOD)</h2>
+                  <h2 id="worksheetScheduleHeading" class="text-base font-bold text-slate-900">Monthly ABB Computation Schedule (5th, 15th & 25th EOD)</h2>
                   <span id="capRuleActiveBadge" class="hidden text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
                     2x Spike Cap Applied
                   </span>
                 </div>
                 <p class="text-xs text-slate-500 mt-0.5">
-                  Formula: <code class="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-700">Monthly ABB = (5th Bal + 15th Bal + 25th Bal) ÷ 3</code> • Hover or click any source badge to inspect the exact PDF transaction.
+                  Formula: <code id="worksheetFormulaCode" class="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-700">Monthly ABB = (5th + 15th + 25th) ÷ 3</code> • Click any source badge to inspect the exact PDF transaction.
                 </p>
               </div>
 
@@ -551,44 +608,14 @@
             <!-- Responsive Worksheet Table -->
             <div class="overflow-x-auto">
               <table class="w-full text-left border-collapse">
-                <thead>
-                  <tr class="bg-slate-100/80 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-600">
-                    <th class="py-3 pl-3 pr-1 w-10 text-center" title="Include/Exclude partial month from ABB calculation">Inc</th>
-                    <th class="py-3 px-2 min-w-[125px]">Month & Year</th>
-                    <th class="py-3 px-2 min-w-[165px] text-right">5th Closing Bal (₹)</th>
-                    <th class="py-3 px-2 min-w-[165px] text-right">15th Closing Bal (₹)</th>
-                    <th class="py-3 px-2 min-w-[165px] text-right">25th Closing Bal (₹)</th>
-                    <th class="py-3 px-3 min-w-[130px] text-right bg-slate-100">Monthly Sum (₹)</th>
-                    <th class="py-3 px-3 min-w-[145px] text-right bg-indigo-50/70 text-indigo-950">Monthly ABB (₹)</th>
-                    <th class="py-3 pl-1 pr-3 w-10 text-center no-print">Del</th>
-                  </tr>
+                <thead id="abbTableHead">
+                  <!-- Dynamically populated based on activeDateGridDays (e.g. 5th, 15th, 25th or 6-point grid) -->
                 </thead>
                 <tbody id="abbTableBody" class="divide-y divide-slate-200/80 text-sm">
                   <!-- Populated dynamically via JS -->
                 </tbody>
-                <tfoot class="bg-slate-900 text-white font-mono text-xs sm:text-sm">
-                  <tr>
-                    <td colspan="2" class="py-3.5 pl-4 pr-2 font-sans font-bold uppercase tracking-wider text-indigo-300">
-                      Aggregate Total (Included Mos)
-                    </td>
-                    <td id="footSum5" class="py-3.5 px-2 text-right font-semibold text-slate-200">₹ 0</td>
-                    <td id="footSum15" class="py-3.5 px-2 text-right font-semibold text-slate-200">₹ 0</td>
-                    <td id="footSum25" class="py-3.5 px-2 text-right font-semibold text-slate-200">₹ 0</td>
-                    <td id="footGrandTotalSum" class="py-3.5 px-3 text-right font-bold text-white bg-slate-800">₹ 0</td>
-                    <td id="footSumOfMonthlyABBs" class="py-3.5 px-3 text-right font-bold text-indigo-200 bg-indigo-950">₹ 0</td>
-                    <td class="no-print"></td>
-                  </tr>
-                  <tr class="border-t border-slate-700 bg-indigo-950/90">
-                    <td colspan="2" class="py-3.5 pl-4 pr-2 font-sans font-extrabold uppercase tracking-wider text-emerald-300">
-                      Average Bank Balance (ABB)
-                    </td>
-                    <td id="footAvg5" class="py-3.5 px-2 text-right font-semibold text-indigo-200">₹ 0</td>
-                    <td id="footAvg15" class="py-3.5 px-2 text-right font-semibold text-indigo-200">₹ 0</td>
-                    <td id="footAvg25" class="py-3.5 px-2 text-right font-semibold text-indigo-200">₹ 0</td>
-                    <td id="footAvgMonthlySum" class="py-3.5 px-3 text-right font-semibold text-slate-300 bg-slate-800/70">₹ 0</td>
-                    <td id="footFinalABB" class="py-3.5 px-3 text-right text-base font-extrabold text-emerald-300 bg-indigo-900/80">₹ 0.00</td>
-                    <td class="no-print"></td>
-                  </tr>
+                <tfoot id="abbTableFoot" class="bg-slate-900 text-white font-mono text-xs sm:text-sm">
+                  <!-- Dynamically populated based on activeDateGridDays -->
                 </tfoot>
               </table>
             </div>
@@ -616,7 +643,80 @@
           </div>
         </div>
 
-        <!-- TAB PANEL 2: EXTRACTED RAW TRANSACTIONS INSPECTOR -->
+        <!-- TAB PANEL 2: BOUNCES, ECS/NACH RETURNS, PENAL CHARGES & RECURRING EMIs -->
+        <div id="tabPanel_BOUNCES" class="hidden space-y-5 no-print">
+          <!-- Bounces & Penal Red Flags Table -->
+          <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden">
+            <div class="p-4 sm:p-5 bg-slate-900 text-white flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 class="text-base font-bold flex items-center gap-2">
+                  <i data-lucide="shield-alert" class="w-5 h-5 text-rose-400"></i>
+                  <span>Cheque Bounces, ECS/NACH Returns & Minimum Balance Penal Charges</span>
+                </h2>
+                <p class="text-xs text-slate-400 mt-0.5">
+                  Automatically scans transaction narrations for `ECS RETURN`, `NACH RTN`, `CHQ BOUNCE`, `INSUFFICIENT FUNDS`, and `MIN BAL / MAB CHG`. Uncheck any row to ignore a false positive.
+                </p>
+              </div>
+              <button onclick="switchMainTab('WORKSHEET')" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 cursor-pointer">
+                ← Back to 12M ABB Table
+              </button>
+            </div>
+
+            <div class="overflow-x-auto">
+              <table class="w-full text-left border-collapse text-xs">
+                <thead class="bg-slate-100 text-slate-600 uppercase font-bold border-b border-slate-200">
+                  <tr>
+                    <th class="py-2.5 px-3 w-16 text-center">Count?</th>
+                    <th class="py-2.5 px-3 w-28">Date</th>
+                    <th class="py-2.5 px-3 w-40">Risk Category</th>
+                    <th class="py-2.5 px-3">Transaction Narration</th>
+                    <th class="py-2.5 px-3 text-right w-32">Amount / Bal</th>
+                  </tr>
+                </thead>
+                <tbody id="bounceTableBody" class="divide-y divide-slate-200 font-mono">
+                  <!-- Populated dynamically -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Detected Recurring EMIs & Loan Repayments Table -->
+          <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden">
+            <div class="p-4 sm:p-5 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <i data-lucide="repeat" class="w-4 h-4 text-indigo-600"></i>
+                  <span>Auto-Detected Monthly EMI & Loan Obligations (Debit Outflows)</span>
+                </h3>
+                <p class="text-xs text-slate-500 mt-0.5">
+                  Scans for recurring `EMI`, `ACH DR`, `NACH DR`, and NBFC/Bank loan debits (`BAJAJ`, `HDFC LOAN`, `TATA CAP`, `ICICI LOAN`, `CHOLA`, etc.).
+                </p>
+              </div>
+              <button onclick="applyDetectedEmisToSimulator()" class="px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-xs cursor-pointer inline-flex items-center gap-1.5">
+                <i data-lucide="check-check" class="w-4 h-4"></i>
+                <span>Apply Selected EMIs to Simulator</span>
+              </button>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-left border-collapse text-xs">
+                <thead class="bg-slate-100 text-slate-600 uppercase font-bold border-b border-slate-200">
+                  <tr>
+                    <th class="py-2.5 px-3 w-16 text-center">Include</th>
+                    <th class="py-2.5 px-3">Financier / Obligation Pattern</th>
+                    <th class="py-2.5 px-3 w-28 text-center">Occurrences</th>
+                    <th class="py-2.5 px-3 w-36 text-right">Est. Monthly EMI (₹)</th>
+                    <th class="py-2.5 px-3">Sample Dates</th>
+                  </tr>
+                </thead>
+                <tbody id="detectedEmiTableBody" class="divide-y divide-slate-200 font-mono">
+                  <!-- Populated dynamically -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB PANEL 3: EXTRACTED RAW TRANSACTIONS INSPECTOR -->
         <div id="tabPanel_TRANSACTIONS" class="hidden space-y-4 no-print">
           <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden">
             <div class="p-4 sm:p-5 bg-slate-900 text-white flex flex-wrap items-center justify-between gap-3">
@@ -773,6 +873,19 @@
               <div class="relative">
                 <span class="absolute left-3 top-2 text-xs font-bold text-slate-400">₹</span>
                 <input id="existingEmiInput" type="number" min="0" step="1000" value="0" oninput="recalculateAll()" class="w-full pl-7 pr-3 py-2 rounded-lg border border-slate-300 text-sm font-mono font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              </div>
+              <!-- Auto-Detected EMI Quick Apply Box -->
+              <div id="simulatorDetectedEmiBox" class="hidden mt-2 p-2.5 rounded-xl bg-indigo-50/90 border border-indigo-200 text-xs space-y-1.5 no-print">
+                <div class="flex items-center justify-between">
+                  <span class="font-bold text-indigo-950 flex items-center gap-1">
+                    <i data-lucide="sparkles" class="w-3.5 h-3.5 text-indigo-600"></i>
+                    <span id="simDetectedEmiSummaryLabel">Auto-Detected EMIs: ₹ 0/mo</span>
+                  </span>
+                  <button type="button" onclick="applyDetectedEmisToSimulator()" class="px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-semibold cursor-pointer">
+                    Apply
+                  </button>
+                </div>
+                <div id="simDetectedEmiList" class="text-[11px] text-indigo-800 space-y-0.5 font-mono"></div>
               </div>
               <p class="text-[11px] text-slate-400">Deducted from Gross ABB Capacity</p>
             </div>
@@ -971,6 +1084,14 @@
     </div>
   </div>
 
+  <!-- Website Footer -->
+  <footer class="no-print border-t border-slate-200/80 bg-white/90 py-5 mt-10">
+    <div class="max-w-[1600px] mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500">
+      <p>© 2026 <span class="font-semibold text-slate-700">BankELi</span>. All rights reserved.</p>
+      <p class="font-medium text-slate-600">Made with ❤️ by Vishal</p>
+    </div>
+  </footer>
+
   <script>
     // ============================================================================
     // 1. BULLETPROOF PDF.JS SETUP FOR BOTH file:/// AND http(s)://
@@ -1061,11 +1182,36 @@
     let detectedStatementOrder = 'ASC (Oldest → Newest)';
     let detectedBankGlobal = '';
 
+    // Active ABB Date Grid Days (Default: [5, 15, 25])
+    let activeDateGridDays = [5, 15, 25];
+
     // 12-Month ABB Schedule Rows:
-    // Each row: { id, included, year, month (0-11), label, bal5, bal15, bal25, meta5, meta15, meta25 }
+    // Each row: { id, included, year, month (0-11), label, points: { [day]: { balance, meta } } }
     let abbScheduleRows = [];
 
+    // Underwriting Suite State: Bounces, Penal Charges, Recurring EMIs & Credit Turnover
+    let detectedBounceEvents = [];
+    let detectedRecurringEmis = [];
+    let creditTurnoverMetrics = { totalCreditSum: 0, creditCount: 0, monthlyAvgCredit: 0 };
+
     const MONTH_NAMES_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+    function getOrdinalSuffix(day) {
+      const d = Number(day);
+      if (d === 30) return '30th/EOM';
+      if (d > 3 && d < 21) return `${d}th`;
+      switch (d % 10) {
+        case 1: return `${d}st`;
+        case 2: return `${d}nd`;
+        case 3: return `${d}rd`;
+        default: return `${d}th`;
+      }
+    }
+
+    function getClampedDayOfMonth(year, monthZeroIndexed, targetDay) {
+      const lastDayOfMonth = new Date(year, monthZeroIndexed + 1, 0).getDate();
+      return Math.min(Math.max(1, targetDay), lastDayOfMonth);
+    }
 
     const inrFormatter = new Intl.NumberFormat('en-IN', {
       style: 'currency',
@@ -1135,10 +1281,11 @@
     }
 
     function switchMainTab(tabKey) {
-      const tabs = ['WORKSHEET', 'TRANSACTIONS', 'DEBUGGER'];
+      const tabs = ['WORKSHEET', 'BOUNCES', 'TRANSACTIONS', 'DEBUGGER'];
       tabs.forEach(k => {
         const panel = document.getElementById(`tabPanel_${k}`);
         const btn = document.getElementById(`tabBtn_${k}`);
+        if (!panel || !btn) return;
         if (k === tabKey) {
           panel.classList.remove('hidden');
           btn.className = 'px-4 py-2.5 rounded-t-xl text-xs sm:text-sm font-bold border-b-2 border-indigo-600 text-indigo-700 bg-white flex items-center gap-2 cursor-pointer transition';
@@ -1148,11 +1295,72 @@
         }
       });
 
-      if (tabKey === 'TRANSACTIONS') {
+      if (tabKey === 'BOUNCES') {
+        renderBouncesAndEmiTables();
+      } else if (tabKey === 'TRANSACTIONS') {
         renderTransactionsInspectorTable();
       } else if (tabKey === 'DEBUGGER') {
         renderRawPdfDebugger();
       }
+    }
+
+    function handleDateGridRuleChange() {
+      const sel = document.getElementById('abbDateGridSelect').value;
+      const customInput = document.getElementById('customGridDatesInput');
+      if (sel === 'CUSTOM') {
+        customInput.focus();
+        applyCustomGridDatesInput();
+      } else {
+        const days = sel.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n) && n >= 1 && n <= 31);
+        activeDateGridDays = days.length > 0 ? days : [5, 15, 25];
+        customInput.value = activeDateGridDays.join(', ');
+        updateDateGridBrandingLabels();
+        const existingMonths = abbScheduleRows.map(r => ({ year: r.year, month: r.month }));
+        buildScheduleFromDailyEODMap(existingMonths.length > 0 ? existingMonths : null);
+      }
+    }
+
+    function applyCustomGridDatesInput() {
+      const raw = document.getElementById('customGridDatesInput').value;
+      const days = Array.from(new Set(
+        raw.split(/[\s,;]+/)
+          .map(s => parseInt(s.trim(), 10))
+          .filter(n => !isNaN(n) && n >= 1 && n <= 31)
+      )).sort((a, b) => a - b);
+
+      if (days.length === 0) {
+        showToast('Please enter at least 1 valid day between 1 and 31 (e.g., 5, 15, 25).', 'warning');
+        return;
+      }
+
+      activeDateGridDays = days;
+      document.getElementById('customGridDatesInput').value = activeDateGridDays.join(', ');
+
+      // Sync dropdown if matches preset
+      const key = activeDateGridDays.join(',');
+      const selEl = document.getElementById('abbDateGridSelect');
+      if (['5,15,25', '1,10,20', '10,20,30', '5,10,15,20,25,30'].includes(key)) {
+        selEl.value = key;
+      } else {
+        selEl.value = 'CUSTOM';
+      }
+
+      updateDateGridBrandingLabels();
+      const existingMonths = abbScheduleRows.map(r => ({ year: r.year, month: r.month }));
+      buildScheduleFromDailyEODMap(existingMonths.length > 0 ? existingMonths : null);
+      showToast(`ABB Date Grid updated to: ${activeDateGridDays.map(getOrdinalSuffix).join(', ')}`, 'info');
+    }
+
+    function updateDateGridBrandingLabels() {
+      const ordinals = activeDateGridDays.map(getOrdinalSuffix);
+      const shortList = ordinals.join(' • ');
+      const humanList = ordinals.join(', ');
+
+      document.getElementById('headerGridBadge').textContent = `${shortList} EOD Engine`;
+      document.getElementById('tabWorksheetTitle').textContent = `1. 12-Month ABB Worksheet (${humanList})`;
+      document.getElementById('worksheetScheduleHeading').textContent = `Monthly ABB Computation Schedule (${humanList} EOD)`;
+      document.getElementById('worksheetFormulaCode').textContent = `Monthly ABB = (${ordinals.join(' + ')}) ÷ ${activeDateGridDays.length}`;
+      document.getElementById('printMethodSubtitle').textContent = `Computation Method: ${humanList} End-of-Day (EOD) Closing Balance Average (${activeDateGridDays.length} Points/Month)`;
     }
 
     function togglePasswordVisibility() {
@@ -1675,257 +1883,236 @@
         { regex: /\bYES\s*BANK\b|\bYESB0\w{6}\b/i, name: 'Yes Bank' },
         { regex: /\bUNION\s*BANK\s*OF\s*INDIA\b|\bUBIN0\w{6}\b/i, name: 'Union Bank of India' },
         { regex: /\bCANARA\s*BANK\b|\bCNRB0\w{6}\b/i, name: 'Canara Bank' },
-        { regex: /\bFEDERAL\s*BANK\b|\bFDRL0\w{6}\b/i, name: 'Federal Bank' },
-        { regex: /\bAU\s*SMALL\s*FINANCE\b|\bAUBL0\w{6}\b/i, name: 'AU Small Finance Bank' }
+        { regex: /\bAU\s*SMALL\s*FINANCE\b|\bAUBL0\w{6}\b/i, name: 'AU Small Finance Bank' },
+        { regex: /\bFEDERAL\s*BANK\b|\bFDRL0\w{6}\b/i, name: 'Federal Bank' }
       ];
 
-      const accInput = document.getElementById('accountNumber');
-      if (accInput && !accInput.value) {
-        const accMatch = text.match(/(?:Account\s*(?:No|Number|#)|A\/c\s*No\.?|IDFCFIRSTBankstatement_)\s*[:\-]?\s*([0-9X\*]{8,18})/i);
-        if (accMatch) {
-          accInput.value = accMatch[1];
+      let matchedBank = '';
+      for (const b of bankPatterns) {
+        if (b.regex.test(text)) {
+          matchedBank = b.name;
+          break;
         }
       }
 
-      for (const b of bankPatterns) {
-        if (b.regex.test(text)) return b.name;
+      const accMatch = text.match(/(?:account\s*(?:no|number|#)|a\/c\s*(?:no|number)?)\s*[:\-]?\s*([0-9X\*]{8,18})/i);
+      if (accMatch && !document.getElementById('accountNumber').value) {
+        document.getElementById('accountNumber').value = accMatch[1].trim();
       }
-      return '';
+
+      const nameMatch = text.match(/(?:customer\s*name|account\s*holder(?:\s*name)?|name\s*of\s*customer)\s*[:\-]\s*([A-Z0-9\s\.&\/]{4,45})/i);
+      if (nameMatch && !document.getElementById('clientName').value) {
+        const cleanName = nameMatch[1].replace(/\b(address|branch|ifsc|date|page|account)\b.*/i, '').trim();
+        if (cleanName.length >= 3) {
+          document.getElementById('clientName').value = cleanName;
+        }
+      }
+
+      if (/\b(overdraft|cash\s*credit|cc\/od|od\s*account)\b/i.test(text)) {
+        document.getElementById('accountType').value = 'Cash Credit / Overdraft (CC/OD)';
+      } else if (/\b(current\s*account)\b/i.test(text)) {
+        document.getElementById('accountType').value = 'Current Account (Business)';
+      } else if (/\b(savings\s*account|sb\s*account)\b/i.test(text)) {
+        document.getElementById('accountType').value = 'Savings Account (Individual)';
+      }
+
+      return matchedBank;
     }
 
-    function isNonTransactionMetadataLine(lineText) {
-      const clean = lineText.trim();
-      if (!clean) return true;
-      if (/^(page\s*\d+|statement\s*of\s*account|account\s*statement|transaction\s*statement)/i.test(clean)) {
-        return true;
-      }
-      if (/\b(statement\s*period|statement\s*from|generated\s*on|printed\s*on|date\s*of\s*birth|summary\s*of\s*account|statement\s*summary|total\s*debits?|total\s*credits?|closing\s*balance\s*as\s*on|end\s*of\s*statement|computer\s*generated|nominee\s*registered|ifsc\s*code|micr\s*code|cust\s*id|disclaimer|registered\s*office)\b/i.test(clean)) {
-        return true;
-      }
-      return false;
+    function isNonTransactionMetadataLine(text) {
+      return /\b(statement\s*of\s*account|statement\s*period|account\s*branch|nomination|ifsc\s*code|micr\s*code|customer\s*id|cif\s*no|page\s*\d+\s*of\s*\d+|computer\s*generated\s*statement|does\s*not\s*require\s*signature|end\s*of\s*statement|statement\s*summary|total\s*debit|total\s*credit|closing\s*balance\s*as\s*on| Uncleared\s*Amount|generated\s*on|printed\s*on|registered\s*office)\b/i.test(text);
     }
 
-    /**
-     * Universal Indian Bank Date Extractor (Supports IDFC FIRST Bank, HDFC, SBI, ICICI, Axis, Kotak, BoB, PNB):
-     * Inspects the left side of the line (`x <= pageWidth * 0.45`) and matches dates at the start of the line
-     * OR after an optional Serial No (`1`, `02`, `S.No`).
-     */
-    function extractUniversalIndianDateFromLine(line, pageWidth) {
-      let leftText = '';
-      if (line.chunks && line.chunks.length > 0) {
-        const leftChunks = line.chunks.filter(c => c.x <= pageWidth * 0.45);
-        leftText = leftChunks.slice(0, 4).map(c => c.str).join(' ').trim();
+    const MONTH_LOOKUP_MAP = {
+      jan: 0, january: 0,
+      feb: 1, february: 1,
+      mar: 2, march: 2,
+      apr: 3, april: 3,
+      may: 4,
+      jun: 5, june: 5,
+      jul: 6, july: 6,
+      aug: 7, august: 7,
+      sep: 8, sept: 8, september: 8,
+      oct: 9, october: 9,
+      nov: 10, november: 10,
+      dec: 11, december: 11
+    };
+
+    function normalizeTwoDigitYear(rawYearStr) {
+      let y = parseInt(rawYearStr, 10);
+      if (rawYearStr.length === 2) {
+        y = y >= 70 ? 1900 + y : 2000 + y;
       }
-      if (!leftText) {
-        leftText = line.text.slice(0, 65).trim();
+      return y;
+    }
+
+    function extractUniversalIndianDateFromLine(lineObj, pageWidth) {
+      let prefixText = '';
+      if (lineObj.chunks && lineObj.chunks.length > 0) {
+        const leftChunks = lineObj.chunks.filter((c, idx) => idx < 3 && c.x < pageWidth * 0.42);
+        prefixText = leftChunks.map(c => c.str).join('  ');
+      }
+      if (!prefixText) {
+        prefixText = (lineObj.text || '').slice(0, 48);
       }
 
-      // Guard against header metadata dates ("Period: 01/04/2025 to 31/03/2026", "As on 05/04/2025")
-      if (/^(from|to|period|as\s*on|statement|opening|closing|date\s*:|printed|generated|account|customer|branch)\b/i.test(leftText)) {
+      if (/\b(to|from|period|as\s*on|generated|printed|dob|birth)\b/i.test(prefixText)) {
         return null;
       }
 
-      const monthLookup = {
-        jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
-        jul: 6, aug: 7, sep: 8, sept: 8, oct: 9, nov: 10, dec: 11
-      };
-
-      // Strip optional serial number prefix like "1 ", "12. ", "| "
-      const stripped = leftText.replace(/^(?:s\.?no\.?\s*)?(?:\d{1,4}[\.\)]\s*|\d{1,4}\s+|\|\s*)?/i, '').trim();
-
-      // Pattern 1: DD-MMM-YYYY / DD MMM YYYY / DD-MMM-YY / DDMMMYYYY / DD April 2025 (IDFC FIRST, SBI, ICICI, BoB)
-      const alphaRegex = /\b(0?[1-9]|[12][0-9]|3[01])[\s\-\/\.]*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*[\s\-\/\.,]*(\d{4}|\d{2})(?!\d)/i;
-      const mAlpha = stripped.match(alphaRegex);
-      if (mAlpha && mAlpha.index <= 14) {
-        const day = parseInt(mAlpha[1], 10);
-        const mon = monthLookup[mAlpha[2].toLowerCase().slice(0, 3)];
-        let year = parseInt(mAlpha[3], 10);
-        if (year < 100) year += 2000;
-        if (year >= 2010 && year <= 2035 && mon !== undefined) {
-          return { isoDate: formatISODate(year, mon, day), matchedRaw: mAlpha[0].trim() };
+      // Pattern 1: DD MMM YYYY or DD-MMM-YY or DDMMMYYYY
+      const p1 = prefixText.match(/(?:^|\b|\|)\s*(0?[1-9]|[12][0-9]|3[01])[\s\-\/\.,]*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*[\s\-\/\.,]*(20[123]\d|\d{2})(?:\b|\s|$)/i);
+      if (p1) {
+        const day = parseInt(p1[1], 10);
+        const mKey = p1[2].toLowerCase().slice(0, 3);
+        const month = MONTH_LOOKUP_MAP[mKey];
+        const year = normalizeTwoDigitYear(p1[3]);
+        if (month !== undefined && year >= 2015 && year <= 2035) {
+          return { isoDate: formatISODate(year, month, day), matchedRaw: p1[0].replace(/\|/g, '').trim() };
         }
       }
 
-      // Pattern 2: DD/MM/YYYY or DD-MM-YY or DD.MM.YYYY (2-digit & 4-digit years — HDFC, Axis, Kotak)
-      const numRegex = /\b(0?[1-9]|[12][0-9]|3[01])[\/\-\.](0?[1-9]|1[0-2])[\/\-\.](\d{4}|\d{2})(?!\d|[\/\-\.]\d)/;
-      const mNum = stripped.match(numRegex);
-      if (mNum && mNum.index <= 14) {
-        const day = parseInt(mNum[1], 10);
-        const mon = parseInt(mNum[2], 10) - 1;
-        let year = parseInt(mNum[3], 10);
-        if (year < 100) year += 2000;
-        if (year >= 2010 && year <= 2035 && mon >= 0 && mon <= 11) {
-          return { isoDate: formatISODate(year, mon, day), matchedRaw: mNum[0].trim() };
+      // Pattern 2: DD/MM/YYYY or DD-MM-YY or DD.MM.YYYY
+      const p2 = prefixText.match(/(?:^|\b|\|)\s*(0?[1-9]|[12][0-9]|3[01])[\/\-\.](0?[1-9]|1[0-2])[\/\-\.](20[123]\d|\d{2})(?:\b|\s|$)/);
+      if (p2) {
+        const day = parseInt(p2[1], 10);
+        const month = parseInt(p2[2], 10) - 1;
+        const year = normalizeTwoDigitYear(p2[3]);
+        if (day >= 1 && day <= 31 && month >= 0 && month <= 11 && year >= 2015 && year <= 2035) {
+          return { isoDate: formatISODate(year, month, day), matchedRaw: p2[0].replace(/\|/g, '').trim() };
         }
       }
 
-      // Pattern 3: ISO YYYY-MM-DD
-      const isoRegex = /\b(20[123]\d)[\/\-](0[1-9]|1[0-2])[\/\-](0[1-9]|[12]\d|3[01])(?!\d)/;
-      const mIso = stripped.match(isoRegex);
-      if (mIso && mIso.index <= 14) {
-        return {
-          isoDate: `${mIso[1]}-${mIso[2]}-${mIso[3]}`,
-          matchedRaw: mIso[0].trim()
-        };
-      }
-
-      // Pattern 4: MMM DD, YYYY (e.g., "Apr 05, 2025")
-      const mdyAlpha = /\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*[\s\-\/\.]*(0?[1-9]|[12][0-9]|3[01])[\s,\-\/\.]*(\d{4}|\d{2})(?!\d)/i;
-      const mMdy = stripped.match(mdyAlpha);
-      if (mMdy && mMdy.index <= 14) {
-        const mon = monthLookup[mMdy[1].toLowerCase().slice(0, 3)];
-        const day = parseInt(mMdy[2], 10);
-        let year = parseInt(mMdy[3], 10);
-        if (year < 100) year += 2000;
-        if (year >= 2010 && year <= 2035 && mon !== undefined) {
-          return { isoDate: formatISODate(year, mon, day), matchedRaw: mMdy[0].trim() };
+      // Pattern 3: ISO YYYY-MM-DD or YYYY/MM/DD
+      const p3 = prefixText.match(/(?:^|\b|\|)\s*(20[123]\d)[\/\-\.](0?[1-9]|1[0-2])[\/\-\.](0?[1-9]|[12][0-9]|3[01])(?:\b|\s|$)/);
+      if (p3) {
+        const year = parseInt(p3[1], 10);
+        const month = parseInt(p3[2], 10) - 1;
+        const day = parseInt(p3[3], 10);
+        if (day >= 1 && day <= 31 && month >= 0 && month <= 11) {
+          return { isoDate: formatISODate(year, month, day), matchedRaw: p3[0].replace(/\|/g, '').trim() };
         }
       }
 
       return null;
     }
 
-    /**
-     * Extracts monetary amounts (`1,25,000.00`, `125000.00`, `-4500.00`, `45,000.00 Cr`, `(12,400.00)`,
-     * as well as comma-formatted integer balances in the rightmost column like `1,25,000`)
-     * from a visual line's spatial chunks so adjacent Debit/Credit/Balance columns never merge.
-     */
-    function extractDecimalAmountsFromLine(line, lineOffset, pageWidth = 600) {
-      const candidates = [];
-      const sourceChunks = (line.chunks && line.chunks.length > 0)
-        ? line.chunks
-        : line.text.split('|').map((s, idx) => ({ str: s.trim(), x: idx * 120, xRight: (idx + 1) * 120 }));
+    function extractDecimalAmountsFromLine(lineObj, lineOffset, pageWidth) {
+      const results = [];
+      const chunks = (lineObj.chunks && lineObj.chunks.length > 0)
+        ? lineObj.chunks
+        : [{ str: lineObj.text || '', x: pageWidth * 0.6, xRight: pageWidth * 0.9 }];
 
-      // Matches standard decimal amounts (.XX or .X) OR comma-grouped Indian currency amounts in the right-side columns
-      const moneyRegex = /(?:₹|Rs\.?|INR)?\s*([-+(]?\s*(?:(?:\d{1,3}(?:,\d{2,3})+|\d{1,10})\.\d{1,2}|\d{1,3}(?:,\d{2,3})+)\s*[-+)]?)\s*(Cr\.?|Dr\.?|CR|DR)?/gi;
+      const amtRegex = /(?:(?:INR|Rs\.?|₹)\s*)?(\(?-?(?:\d{1,2}(?:,\d{2})*,\d{3}|\d{1,3}(?:,\d{3})+|\d+)\.\d{2}\)?)(?:\s*(Cr\.?|Dr\.?|CR|DR))?/gi;
 
-      for (const chunk of sourceChunks) {
-        const str = chunk.str;
-        let match;
-        moneyRegex.lastIndex = 0;
+      for (const ch of chunks) {
+        if (ch.xRight < pageWidth * 0.22) continue;
+        let m;
+        amtRegex.lastIndex = 0;
+        while ((m = amtRegex.exec(ch.str)) !== null) {
+          const rawNumStr = m[1];
+          const crDrSuffix = (m[2] || '').toUpperCase();
+          const isParenNeg = rawNumStr.startsWith('(') && rawNumStr.endsWith(')');
+          const cleanDigits = rawNumStr.replace(/[(),]/g, '');
+          const numVal = parseFloat(cleanDigits);
+          if (isNaN(numVal) || Math.abs(numVal) > 9999999999) continue;
 
-        while ((match = moneyRegex.exec(str)) !== null) {
-          const fullMatched = match[0].trim();
-          const beforeIdx = match.index;
-          const afterIdx = match.index + match[0].length;
-          const charBefore = beforeIdx > 0 ? str[beforeIdx - 1] : '';
-          const charAfter = afterIdx < str.length ? str[afterIdx] : '';
+          const isNegative = isParenNeg || cleanDigits.startsWith('-') || crDrSuffix.startsWith('DR');
+          const absVal = Math.abs(numVal);
 
-          // Avoid matching dates like 05.04.2025, timestamps like 12.30.45, or long reference numbers
-          if (charBefore === '.' || charBefore === '/' || charBefore === ':' || charBefore === '-' || charAfter === '.' || charAfter === ':' || charAfter === '/') {
-            continue;
-          }
-
-          const rawAmountPart = match[1];
-          // If it's a comma-formatted integer without decimals, only accept it if it sits in the right half of the page
-          if (!rawAmountPart.includes('.') && chunk.xRight < pageWidth * 0.42) {
-            continue;
-          }
-
-          const suffix = (match[2] || '').toUpperCase();
-
-          const isNegativeOrDebit =
-            rawAmountPart.includes('-') ||
-            (rawAmountPart.includes('(') && rawAmountPart.includes(')')) ||
-            suffix.startsWith('DR');
-
-          const cleanDigits = rawAmountPart.replace(/[^0-9.]/g, '');
-          const absValue = parseFloat(cleanDigits);
-          if (isNaN(absValue) || absValue > 50000000000) continue;
-
-          candidates.push({
-            absValue,
-            signedValue: isNegativeOrDebit ? -absValue : absValue,
-            isDr: isNegativeOrDebit,
-            rawText: fullMatched,
-            x: chunk.x,
-            xRight: chunk.xRight,
+          results.push({
+            absValue: absVal,
+            signedValue: isNegative ? -absVal : absVal,
+            isDr: isNegative,
+            rawText: m[0].trim(),
+            x: ch.x,
+            xRight: ch.xRight,
             lineOffset
           });
         }
       }
 
-      return candidates;
+      return results;
     }
 
-    // ============================================================================
-    // 6. DYNAMIC BALANCE COLUMN SELECTOR & CHRONOLOGICAL ORDER EVALUATION
-    // ============================================================================
-    /**
-     * Re-evaluates all parsed Transaction Blocks whenever the user changes:
-     * - Balance Column Selector (`AUTO`, `RIGHTMOST`, `DATE_LINE_LAST`, `SECOND_RIGHT`)
-     * - Statement Row Order (`AUTO`, `ASC`, `DESC`)
-     * - Treat 'Dr' Balance as Negative toggle
-     */
     function reEvaluateParsedBlocks() {
       const colRule = document.getElementById('balanceColRuleSelect').value;
-      const orderMode = document.getElementById('statementOrderSelect').value;
+      const orderRule = document.getElementById('statementOrderSelect').value;
       const treatDrNeg = document.getElementById('treatDrNegativeToggle').checked;
 
-      // 1. Select the Closing Balance candidate for each Transaction Block
       for (const block of parsedTransactionBlocks) {
         const cands = block.candidates;
         if (!cands || cands.length === 0) continue;
 
-        let chosenIdx = 0;
+        let chosenIdx = cands.length - 1;
 
-        if (block.manualCandidateIndex !== null && cands[block.manualCandidateIndex]) {
+        if (block.manualCandidateIndex !== null && block.manualCandidateIndex >= 0 && block.manualCandidateIndex < cands.length) {
           chosenIdx = block.manualCandidateIndex;
         } else if (colRule === 'DATE_LINE_LAST') {
-          const dateLineIndices = cands.map((c, idx) => ({ c, idx })).filter(o => o.c.lineOffset === 0);
+          const dateLineIndices = cands.map((c, idx) => c.lineOffset === 0 ? idx : -1).filter(idx => idx !== -1);
           if (dateLineIndices.length > 0) {
-            chosenIdx = dateLineIndices[dateLineIndices.length - 1].idx;
-          } else {
-            chosenIdx = cands.length - 1;
+            chosenIdx = dateLineIndices[dateLineIndices.length - 1];
           }
         } else if (colRule === 'SECOND_RIGHT') {
-          const sortedByX = cands.map((c, idx) => ({ c, idx })).sort((a, b) => b.c.xRight - a.c.xRight);
-          chosenIdx = sortedByX.length >= 2 ? sortedByX[1].idx : sortedByX[0].idx;
+          chosenIdx = cands.length >= 2 ? cands.length - 2 : cands.length - 1;
         } else if (colRule === 'RIGHTMOST') {
-          let bestIdx = 0;
-          for (let i = 1; i < cands.length; i++) {
-            if (cands[i].xRight >= cands[bestIdx].xRight) bestIdx = i;
-          }
-          chosenIdx = bestIdx;
+          let maxX = -1;
+          cands.forEach((c, idx) => {
+            if (c.xRight >= maxX) {
+              maxX = c.xRight;
+              chosenIdx = idx;
+            }
+          });
         } else {
-          // AUTO: Match learned Balance Header X if available, otherwise rightmost candidate on Date Line (or block)
-          let matchedIdx = -1;
+          const sameLineRightIndices = cands
+            .map((c, idx) => (c.lineOffset === 0 && c.xRight >= 220) ? idx : -1)
+            .filter(idx => idx !== -1);
+
+          const poolIndices = sameLineRightIndices.length > 0
+            ? sameLineRightIndices
+            : cands.map((_, idx) => idx);
+
           if (block.learnedBalanceColX !== null) {
-            let minDiff = 85;
-            for (let i = 0; i < cands.length; i++) {
-              const diff = Math.abs(cands[i].xRight - block.learnedBalanceColX);
-              if (diff <= minDiff) {
-                minDiff = diff;
-                matchedIdx = i;
+            let bestDist = Infinity;
+            for (const idx of poolIndices) {
+              const dist = Math.abs(cands[idx].xRight - block.learnedBalanceColX);
+              if (dist <= 55 && dist <= bestDist) {
+                bestDist = dist;
+                chosenIdx = idx;
               }
             }
-          }
-          if (matchedIdx !== -1) {
-            chosenIdx = matchedIdx;
-          } else {
-            let bestIdx = 0;
-            for (let i = 1; i < cands.length; i++) {
-              if (cands[i].xRight >= cands[bestIdx].xRight) bestIdx = i;
+            if (bestDist === Infinity) {
+              let maxX = -1;
+              for (const idx of poolIndices) {
+                if (cands[idx].xRight >= maxX) {
+                  maxX = cands[idx].xRight;
+                  chosenIdx = idx;
+                }
+              }
             }
-            chosenIdx = bestIdx;
+          } else {
+            let maxX = -1;
+            for (const idx of poolIndices) {
+              if (cands[idx].xRight >= maxX) {
+                maxX = cands[idx].xRight;
+                chosenIdx = idx;
+              }
+            }
           }
         }
 
         block.selectedCandidateIndex = chosenIdx;
         const chosenCand = cands[chosenIdx];
-        block.selectedBalance = (chosenCand.isDr && treatDrNeg)
-          ? -Math.abs(chosenCand.absValue)
-          : Math.abs(chosenCand.absValue);
+        block.selectedBalance = treatDrNeg ? chosenCand.signedValue : chosenCand.absValue;
       }
 
-      // 2. Determine Chronological vs Reverse-Chronological Statement Order
       let isDescending = false;
-      if (orderMode === 'DESC') {
-        isDescending = true;
-        detectedStatementOrder = 'Newest → Oldest (Reverse)';
-      } else if (orderMode === 'ASC') {
+      if (orderRule === 'ASC') {
         isDescending = false;
-        detectedStatementOrder = 'Oldest → Newest (Chronological)';
+        detectedStatementOrder = 'ASC (Oldest → Newest)';
+      } else if (orderRule === 'DESC') {
+        isDescending = true;
+        detectedStatementOrder = 'DESC (Newest → Oldest)';
       } else {
         let ascVotes = 0;
         let descVotes = 0;
@@ -1937,40 +2124,332 @@
         }
         isDescending = descVotes > ascVotes;
         detectedStatementOrder = isDescending
-          ? 'Auto: Newest → Oldest'
-          : 'Auto: Oldest → Newest';
+          ? 'Auto: DESC (Newest → Oldest)'
+          : 'Auto: ASC (Oldest → Newest)';
       }
 
-      // 3. Populate Daily EOD Map:
-      // In Oldest -> Newest order, the LAST row of date D is the EOD balance.
-      // In Newest -> Oldest order, the FIRST (top) row of date D is the EOD balance.
       extractedDailyEODMap.clear();
-      const orderedBlocks = isDescending
-        ? parsedTransactionBlocks.slice().reverse()
-        : parsedTransactionBlocks;
-
-      for (const b of orderedBlocks) {
-        extractedDailyEODMap.set(b.isoDate, {
-          dateStr: b.isoDate,
-          balance: b.selectedBalance,
-          narration: b.narration,
-          sourceFile: b.sourceFile,
-          pageNum: b.pageNum,
-          blockId: b.id
-        });
+      for (const block of parsedTransactionBlocks) {
+        if (!isDescending) {
+          extractedDailyEODMap.set(block.isoDate, {
+            dateStr: block.isoDate,
+            balance: block.selectedBalance,
+            narration: block.narration,
+            sourceFile: block.sourceFile,
+            pageNum: block.pageNum,
+            blockId: block.id
+          });
+        } else {
+          if (!extractedDailyEODMap.has(block.isoDate)) {
+            extractedDailyEODMap.set(block.isoDate, {
+              dateStr: block.isoDate,
+              balance: block.selectedBalance,
+              narration: block.narration,
+              sourceFile: block.sourceFile,
+              pageNum: block.pageNum,
+              blockId: block.id
+            });
+          }
+        }
       }
 
-      // 4. Rebuild 12-Month ABB Schedule & Update Diagnostics
+      // 4. Rebuild 12-Month ABB Schedule, Underwriting Analytics & Update Diagnostics
       buildScheduleFromDailyEODMap(null);
+      analyzeUnderwritingSuite();
       updateDiagnosticsBarUI();
 
       // Refresh active inspector tab if visible
+      if (!document.getElementById('tabPanel_BOUNCES').classList.contains('hidden')) {
+        renderBouncesAndEmiTables();
+      }
       if (!document.getElementById('tabPanel_TRANSACTIONS').classList.contains('hidden')) {
         renderTransactionsInspectorTable();
       }
       if (!document.getElementById('tabPanel_DEBUGGER').classList.contains('hidden')) {
         renderRawPdfDebugger();
       }
+    }
+
+    // ============================================================================
+    // 6B. CORE BANKING UNDERWRITING SUITE: BOUNCES, RECURRING EMIs & TURNOVER
+    // ============================================================================
+    function analyzeUnderwritingSuite() {
+      detectedBounceEvents = [];
+      detectedRecurringEmis = [];
+      creditTurnoverMetrics = { totalCreditSum: 0, creditCount: 0, monthlyAvgCredit: 0 };
+
+      if (parsedTransactionBlocks.length === 0) {
+        updateUnderwritingKpiUI();
+        return;
+      }
+
+      const orderMode = document.getElementById('statementOrderSelect').value;
+      let isDescending = false;
+      if (orderMode === 'DESC') isDescending = true;
+      else if (orderMode === 'ASC') isDescending = false;
+      else isDescending = detectedStatementOrder.includes('Newest → Oldest');
+
+      // Arrange transactions chronologically (oldest to newest) to compute running balance deltas (Debit vs Credit)
+      const chronoBlocks = isDescending
+        ? parsedTransactionBlocks.slice().reverse()
+        : parsedTransactionBlocks.slice();
+
+      const bounceRegex = /\b(ecs\s*ret(?:urn)?|nach\s*ret(?:urn)?|ach\s*ret(?:urn)?|ecs\s*rtn|nach\s*rtn|ach\s*rtn|chq\s*ret(?:urn)?|cheque\s*ret(?:urn)?|chq\s*bounce|cheque\s*bounce|dishonour|dishonor|insufficient\s*fund|inward\s*ret(?:urn)?|outward\s*ret(?:urn)?|unpaid\s*chq|bounce\s*chg|return\s*chg)\b/i;
+      const penalRegex = /\b(min(?:imum)?\s*bal(?:ance)?\s*chg|mab\s*chg|non[\s\-]*maintenance|nmab|penal\s*chg|penal\s*interest|overdue\s*chg|late\s*payment\s*chg)\b/i;
+      const reversalOrSelfRegex = /\b(rev(?:ersal)?|bounce|ret(?:urn)?|rtn|contra|self|opening\s*bal|b\/f)\b/i;
+      const emiKeywordRegex = /\b(emi|ach\s*dr|nach\s*dr|ecs\s*dr|bajaj|tata\s*cap|hdfc\s*loan|icici\s*loan|axis\s*loan|kotak\s*loan|idfc\s*first\s*loan|chola|aditya\s*birla|l&t\s*finance|shriram|muthoot|manappuram|hdb\s*fin|poonawalla|fullerton|indusind\s*loan|loan\s*repay|auto\s*loan|home\s*loan)\b/i;
+
+      let prevBalance = openingBalanceFallback;
+      let totalCredits = 0;
+      let creditTxCount = 0;
+      const debitCandidatesForEmi = [];
+
+      for (let i = 0; i < chronoBlocks.length; i++) {
+        const b = chronoBlocks[i];
+        const narr = b.narration || '';
+        const curBal = Number(b.selectedBalance) || 0;
+
+        // Infer transaction amount and direction (Credit vs Debit) from balance delta or secondary candidate in row
+        let txAmount = 0;
+        let isCredit = false;
+        let isDebit = false;
+
+        if (prevBalance !== null && !isNaN(prevBalance)) {
+          const delta = curBal - prevBalance;
+          if (Math.abs(delta) >= 1) {
+            txAmount = Math.abs(delta);
+            if (delta > 0) isCredit = true;
+            else isDebit = true;
+          }
+        }
+
+        // Fallback if first row or zero delta: inspect non-selected candidates on same row
+        if (txAmount === 0 && b.candidates && b.candidates.length >= 2) {
+          const otherCand = b.candidates.find((c, idx) => idx !== b.selectedCandidateIndex);
+          if (otherCand) {
+            txAmount = otherCand.absValue;
+            if (/\b(cr|credit|dep|neft\s*cr|rtgs\s*cr|imps\s*cr|upi\/cr|by\s+)\b/i.test(narr)) {
+              isCredit = true;
+            } else {
+              isDebit = true;
+            }
+          }
+        }
+        prevBalance = curBal;
+
+        // 1. Check for Cheque Bounce / ECS / NACH Return or Minimum Balance Penal Charges
+        const isBounce = bounceRegex.test(narr);
+        const isPenal = !isBounce && penalRegex.test(narr);
+        if (isBounce || isPenal) {
+          detectedBounceEvents.push({
+            id: `flg_${b.id}`,
+            included: true,
+            isoDate: b.isoDate,
+            category: isBounce ? 'BOUNCE' : 'PENAL',
+            label: isBounce ? 'Bounce / ECS-NACH Return' : 'Min Bal / Penal Charge',
+            narration: narr,
+            amount: txAmount > 0 ? txAmount : curBal
+          });
+        }
+
+        // 2. Accumulate genuine Business Credit Turnover (excluding reversals/bounces)
+        if (isCredit && !isBounce && !reversalOrSelfRegex.test(narr) && txAmount > 0 && txAmount < 500000000) {
+          totalCredits += txAmount;
+          creditTxCount++;
+        }
+
+        // 3. Collect candidate EMI / NACH / Loan Debit outflows (>= ₹1,500)
+        if ((isDebit || emiKeywordRegex.test(narr)) && !isBounce && txAmount >= 1500) {
+          if (emiKeywordRegex.test(narr)) {
+            debitCandidatesForEmi.push({
+              isoDate: b.isoDate,
+              monthKey: b.isoDate.slice(0, 7),
+              amount: Math.round(txAmount),
+              narration: narr
+            });
+          }
+        }
+      }
+
+      // Group EMI candidates by rounded amount (within 1% tolerance) + financier signature
+      const emiGroups = [];
+      for (const item of debitCandidatesForEmi) {
+        const financierMatch = item.narration.match(/\b(BAJAJ|TATA\s*CAP|HDFC|ICICI|AXIS|KOTAK|IDFC|CHOLA|ADITYA\s*BIRLA|HDB|SHRIRAM|POONAWALLA|L&T|NACH|ACH|ECS|EMI)\b/i);
+        const tag = financierMatch ? financierMatch[1].toUpperCase() : 'LOAN EMI';
+
+        let group = emiGroups.find(g =>
+          Math.abs(g.avgAmount - item.amount) <= Math.max(50, g.avgAmount * 0.01)
+        );
+        if (!group) {
+          group = {
+            id: `emi_grp_${emiGroups.length + 1}`,
+            included: true,
+            tag,
+            sampleNarration: item.narration.slice(0, 65),
+            amounts: [item.amount],
+            avgAmount: item.amount,
+            monthsSet: new Set([item.monthKey]),
+            dates: [item.isoDate]
+          };
+          emiGroups.push(group);
+        } else {
+          group.amounts.push(item.amount);
+          group.avgAmount = Math.round(group.amounts.reduce((a, c) => a + c, 0) / group.amounts.length);
+          group.monthsSet.add(item.monthKey);
+          group.dates.push(item.isoDate);
+        }
+      }
+
+      // Keep groups that appear in >= 2 distinct months OR have explicit EMI/NACH keyword
+      detectedRecurringEmis = emiGroups.filter(g => g.monthsSet.size >= 2 || (g.amounts.length >= 1 && /\b(EMI|NACH|ACH|LOAN)\b/i.test(g.sampleNarration)));
+
+      const activeMonthsCount = Math.max(1, abbScheduleRows.filter(r => r.included).length || abbScheduleRows.length || 1);
+      creditTurnoverMetrics = {
+        totalCreditSum: totalCredits,
+        creditCount: creditTxCount,
+        monthlyAvgCredit: totalCredits / activeMonthsCount
+      };
+
+      updateUnderwritingKpiUI();
+    }
+
+    function updateUnderwritingKpiUI() {
+      // Determine cutoff date for last 6 months relative to latest statement date
+      const allDates = Array.from(extractedDailyEODMap.keys()).sort();
+      let sixMonthCutoffISO = '0000-00-00';
+      if (allDates.length > 0) {
+        const lastDateParts = allDates[allDates.length - 1].split('-').map(Number);
+        const cutoffDate = new Date(lastDateParts[0], lastDateParts[1] - 1 - 6, lastDateParts[2]);
+        sixMonthCutoffISO = formatISODate(cutoffDate.getFullYear(), cutoffDate.getMonth(), cutoffDate.getDate());
+      }
+
+      const activeFlags = detectedBounceEvents.filter(e => e.included);
+      const bounceFlags = activeFlags.filter(e => e.category === 'BOUNCE');
+      const penalFlags = activeFlags.filter(e => e.category === 'PENAL');
+      const bounce6M = bounceFlags.filter(e => e.isoDate >= sixMonthCutoffISO).length;
+      const bounce12M = bounceFlags.length;
+
+      document.getElementById('kpiBounce6MCount').textContent = bounce6M;
+      document.getElementById('kpiBounce12MCount').textContent = `${bounce12M} in 12M`;
+      document.getElementById('kpiPenalCount').textContent = penalFlags.length;
+      document.getElementById('headerBounceBadge').textContent = activeFlags.length;
+      document.getElementById('tabBounceCountPill').textContent = activeFlags.length;
+
+      const riskBadge = document.getElementById('kpiBounceRiskBadge');
+      if (bounce12M === 0 && penalFlags.length === 0) {
+        riskBadge.className = 'px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200';
+        riskBadge.textContent = 'Clean (0)';
+      } else if (bounce6M === 0 && bounce12M <= 2) {
+        riskBadge.className = 'px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200';
+        riskBadge.textContent = 'Low-Mod Risk';
+      } else {
+        riskBadge.className = 'px-2 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 text-rose-800 border border-rose-200';
+        riskBadge.textContent = 'High Risk';
+      }
+
+      // Business Credit Turnover KPI
+      document.getElementById('kpiTotalCreditTurnover').textContent = formatINR(creditTurnoverMetrics.totalCreditSum, 0);
+      document.getElementById('kpiCreditCountBadge').textContent = `${creditTurnoverMetrics.creditCount} Cr Txns`;
+      document.getElementById('kpiMonthlyAvgCredits').textContent = formatINR(creditTurnoverMetrics.monthlyAvgCredit, 0);
+      document.getElementById('kpiTurnoverLakhsBadge').textContent = formatLakhs(creditTurnoverMetrics.totalCreditSum);
+
+      // Update Simulator Auto-Detected EMI Box
+      const simBox = document.getElementById('simulatorDetectedEmiBox');
+      const simLabel = document.getElementById('simDetectedEmiSummaryLabel');
+      const simList = document.getElementById('simDetectedEmiList');
+      const activeEmis = detectedRecurringEmis.filter(g => g.included);
+
+      if (activeEmis.length > 0) {
+        const totalDetectedMonthlyEmi = activeEmis.reduce((acc, g) => acc + g.avgAmount, 0);
+        simBox.classList.remove('hidden');
+        simLabel.textContent = `Detected EMIs (${activeEmis.length}): ${formatINR(totalDetectedMonthlyEmi, 0)}/mo`;
+        simList.innerHTML = activeEmis.map(g =>
+          `<div class="flex justify-between"><span>• ${g.tag} (${g.monthsSet.size} mos)</span><span class="font-bold">${formatINR(g.avgAmount, 0)}</span></div>`
+        ).join('');
+      } else {
+        simBox.classList.add('hidden');
+      }
+    }
+
+    function renderBouncesAndEmiTables() {
+      const bounceBody = document.getElementById('bounceTableBody');
+      if (bounceBody) {
+        if (detectedBounceEvents.length === 0) {
+          bounceBody.innerHTML = `
+            <tr>
+              <td colspan="5" class="py-8 text-center text-emerald-700 font-sans font-semibold bg-emerald-50/40">
+                ✓ Zero Cheque Bounces, ECS/NACH Returns, or Minimum Balance Penal Charges detected in the uploaded statement!
+              </td>
+            </tr>
+          `;
+        } else {
+          bounceBody.innerHTML = detectedBounceEvents.map((ev, idx) => `
+            <tr class="${ev.included ? 'bg-white hover:bg-rose-50/30' : 'bg-slate-50 opacity-50'}">
+              <td class="py-2.5 px-3 text-center">
+                <input type="checkbox" ${ev.included ? 'checked' : ''} onchange="toggleBounceEventIncluded(${idx}, this.checked)" class="rounded text-rose-600 cursor-pointer" />
+              </td>
+              <td class="py-2.5 px-3 font-bold text-slate-900">${ev.isoDate}</td>
+              <td class="py-2.5 px-3 font-sans">
+                <span class="px-2 py-0.5 rounded text-[10px] font-bold ${ev.category === 'BOUNCE' ? 'bg-rose-100 text-rose-800 border border-rose-200' : 'bg-amber-100 text-amber-800 border border-amber-200'}">
+                  ${ev.label}
+                </span>
+              </td>
+              <td class="py-2.5 px-3 font-sans text-slate-700">${ev.narration}</td>
+              <td class="py-2.5 px-3 text-right font-bold text-rose-700">${formatINR(ev.amount, 2)}</td>
+            </tr>
+          `).join('');
+        }
+      }
+
+      const emiBody = document.getElementById('detectedEmiTableBody');
+      if (emiBody) {
+        if (detectedRecurringEmis.length === 0) {
+          emiBody.innerHTML = `
+            <tr>
+              <td colspan="5" class="py-8 text-center text-slate-400 font-sans">
+                No recurring EMI / NACH / Loan debit patterns detected yet.
+              </td>
+            </tr>
+          `;
+        } else {
+          emiBody.innerHTML = detectedRecurringEmis.map((g, idx) => `
+            <tr class="${g.included ? 'bg-white hover:bg-indigo-50/30' : 'bg-slate-50 opacity-50'}">
+              <td class="py-2.5 px-3 text-center">
+                <input type="checkbox" ${g.included ? 'checked' : ''} onchange="toggleDetectedEmiIncluded(${idx}, this.checked)" class="rounded text-indigo-600 cursor-pointer" />
+              </td>
+              <td class="py-2.5 px-3 font-sans">
+                <div class="font-bold text-slate-900">${g.tag}</div>
+                <div class="text-[11px] text-slate-500 truncate max-w-md">${g.sampleNarration}</div>
+              </td>
+              <td class="py-2.5 px-3 text-center font-bold text-indigo-700">${g.monthsSet.size} Months (${g.amounts.length} debits)</td>
+              <td class="py-2.5 px-3 text-right font-bold text-slate-900">${formatINR(g.avgAmount, 0)}/mo</td>
+              <td class="py-2.5 px-3 text-[11px] text-slate-500">${g.dates.slice(0, 4).join(', ')}${g.dates.length > 4 ? '...' : ''}</td>
+            </tr>
+          `).join('');
+        }
+      }
+    }
+
+    function toggleBounceEventIncluded(index, isChecked) {
+      if (!detectedBounceEvents[index]) return;
+      detectedBounceEvents[index].included = isChecked;
+      updateUnderwritingKpiUI();
+      renderBouncesAndEmiTables();
+    }
+
+    function toggleDetectedEmiIncluded(index, isChecked) {
+      if (!detectedRecurringEmis[index]) return;
+      detectedRecurringEmis[index].included = isChecked;
+      updateUnderwritingKpiUI();
+      renderBouncesAndEmiTables();
+    }
+
+    function applyDetectedEmisToSimulator() {
+      const activeEmis = detectedRecurringEmis.filter(g => g.included);
+      const totalEmi = activeEmis.reduce((acc, g) => acc + g.avgAmount, 0);
+      document.getElementById('existingEmiInput').value = totalEmi;
+      recalculateAll();
+      showToast(`Applied ₹ ${totalEmi.toLocaleString('en-IN')}/mo to Existing Monthly EMIs in Simulator!`, 'success');
     }
 
     function updateDiagnosticsBarUI() {
@@ -2231,27 +2710,22 @@
 
       abbScheduleRows = targetMonths.map((item, idx) => {
         const monthLabel = `${MONTH_NAMES_SHORT[item.month]} ${item.year}`;
-        const iso5 = formatISODate(item.year, item.month, 5);
-        const iso15 = formatISODate(item.year, item.month, 15);
-        const iso25 = formatISODate(item.year, item.month, 25);
+        const points = {};
 
-        const res5 = resolveEODBalanceForTargetDate(iso5, sortedDatesAsc);
-        const res15 = resolveEODBalanceForTargetDate(iso15, sortedDatesAsc);
-        const res25 = resolveEODBalanceForTargetDate(iso25, sortedDatesAsc);
+        activeDateGridDays.forEach(targetDay => {
+          const clampedDay = getClampedDayOfMonth(item.year, item.month, targetDay);
+          const isoTarget = formatISODate(item.year, item.month, clampedDay);
+          const res = resolveEODBalanceForTargetDate(isoTarget, sortedDatesAsc);
+          points[targetDay] = {
+            balance: res.balance,
+            meta: res
+          };
 
-        // Record block usage for Tab 2 Inspector transparency
-        if (res5.blockId) {
-          if (!blockUsageMap.has(res5.blockId)) blockUsageMap.set(res5.blockId, []);
-          blockUsageMap.get(res5.blockId).push(`${monthLabel} (5th)`);
-        }
-        if (res15.blockId) {
-          if (!blockUsageMap.has(res15.blockId)) blockUsageMap.set(res15.blockId, []);
-          blockUsageMap.get(res15.blockId).push(`${monthLabel} (15th)`);
-        }
-        if (res25.blockId) {
-          if (!blockUsageMap.has(res25.blockId)) blockUsageMap.set(res25.blockId, []);
-          blockUsageMap.get(res25.blockId).push(`${monthLabel} (25th)`);
-        }
+          if (res.blockId) {
+            if (!blockUsageMap.has(res.blockId)) blockUsageMap.set(res.blockId, []);
+            blockUsageMap.get(res.blockId).push(`${monthLabel} (${getOrdinalSuffix(targetDay)})`);
+          }
+        });
 
         const isDefaultIncluded = targetMonths.length <= 12
           ? true
@@ -2263,12 +2737,7 @@
           year: item.year,
           month: item.month,
           label: monthLabel,
-          bal5: res5.balance,
-          bal15: res15.balance,
-          bal25: res25.balance,
-          meta5: res5,
-          meta15: res15,
-          meta25: res25
+          points
         };
       });
 
@@ -2277,7 +2746,7 @@
     }
 
     // ============================================================================
-    // 9. TAB 1: 12-MONTH ABB WORKSHEET RENDERING & INTERACTION
+    // 9. TAB 1: DYNAMIC N-POINT ABB WORKSHEET RENDERING & INTERACTION
     // ============================================================================
     function getBadgeHTML(meta) {
       if (!meta || meta.type === 'empty') {
@@ -2311,17 +2780,68 @@
     }
 
     function renderABBTable() {
+      const thead = document.getElementById('abbTableHead');
       const tbody = document.getElementById('abbTableBody');
+      const tfoot = document.getElementById('abbTableFoot');
+      if (!thead || !tbody || !tfoot) return;
+
+      // 1. Render Dynamic Table Header for activeDateGridDays
+      const dayHeadersHtml = activeDateGridDays.map(d => `
+        <th class="py-3 px-2 min-w-[145px] text-right">${getOrdinalSuffix(d)} Bal (₹)</th>
+      `).join('');
+
+      thead.innerHTML = `
+        <tr class="bg-slate-100/80 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-600">
+          <th class="py-3 pl-3 pr-1 w-10 text-center" title="Include/Exclude partial month from ABB calculation">Inc</th>
+          <th class="py-3 px-2 min-w-[120px]">Month & Year</th>
+          ${dayHeadersHtml}
+          <th class="py-3 px-3 min-w-[130px] text-right bg-slate-100">Monthly Sum (₹)</th>
+          <th class="py-3 px-3 min-w-[145px] text-right bg-indigo-50/70 text-indigo-950">Monthly ABB (₹)</th>
+          <th class="py-3 pl-1 pr-3 w-10 text-center no-print">Del</th>
+        </tr>
+      `;
+
+      // 2. Render Dynamic Table Footer
+      const footSumCellsHtml = activeDateGridDays.map(d => `
+        <td id="footSum_${d}" class="py-3.5 px-2 text-right font-semibold text-slate-200">₹ 0</td>
+      `).join('');
+      const footAvgCellsHtml = activeDateGridDays.map(d => `
+        <td id="footAvg_${d}" class="py-3.5 px-2 text-right font-semibold text-indigo-200">₹ 0</td>
+      `).join('');
+
+      tfoot.innerHTML = `
+        <tr>
+          <td colspan="2" class="py-3.5 pl-4 pr-2 font-sans font-bold uppercase tracking-wider text-indigo-300">
+            Aggregate Total (Included Mos)
+          </td>
+          ${footSumCellsHtml}
+          <td id="footGrandTotalSum" class="py-3.5 px-3 text-right font-bold text-white bg-slate-800">₹ 0</td>
+          <td id="footSumOfMonthlyABBs" class="py-3.5 px-3 text-right font-bold text-indigo-200 bg-indigo-950">₹ 0</td>
+          <td class="no-print"></td>
+        </tr>
+        <tr class="border-t border-slate-700 bg-indigo-950/90">
+          <td colspan="2" class="py-3.5 pl-4 pr-2 font-sans font-extrabold uppercase tracking-wider text-emerald-300">
+            Average Bank Balance (ABB)
+          </td>
+          ${footAvgCellsHtml}
+          <td id="footAvgMonthlySum" class="py-3.5 px-3 text-right font-semibold text-slate-300 bg-slate-800/70">₹ 0</td>
+          <td id="footFinalABB" class="py-3.5 px-3 text-right text-base font-extrabold text-emerald-300 bg-indigo-900/80">₹ 0.00</td>
+          <td class="no-print"></td>
+        </tr>
+      `;
+
+      // 3. Render Table Body
       tbody.innerHTML = '';
+      const totalCols = activeDateGridDays.length + 5;
 
       if (abbScheduleRows.length === 0) {
         const emptyRow = document.createElement('tr');
         emptyRow.innerHTML = `
-          <td colspan="8" class="py-12 px-4 text-center">
+          <td colspan="${totalCols}" class="py-12 px-4 text-center">
             <div class="max-w-md mx-auto space-y-2">
               <div class="text-sm font-bold text-slate-700">No Bank Statement Loaded Yet</div>
               <p class="text-xs text-slate-500">
-                Upload your client's PDF bank statement above to extract real 5th, 15th & 25th closing balances, or click <strong>"Manual 12M Grid"</strong> / <strong>"Load Sample Statement"</strong> to test.
+                Upload your client's PDF bank statement above to extract real closing balances, or click <strong>"Manual 12M Grid"</strong> / <strong>"Load Sample Statement"</strong> to test.
               </p>
             </div>
           </td>
@@ -2331,12 +2851,27 @@
       }
 
       abbScheduleRows.forEach((row, index) => {
+        if (!row.points) row.points = {};
         const tr = document.createElement('tr');
         tr.id = `tr_${row.id}`;
         tr.className = `transition-colors ${row.included ? 'hover:bg-slate-50/90 bg-white' : 'bg-slate-50/60 opacity-55'}`;
 
-        const monthlySum = (Number(row.bal5) || 0) + (Number(row.bal15) || 0) + (Number(row.bal25) || 0);
-        const monthlyABB = monthlySum / 3;
+        let monthlySum = 0;
+        const pointCellsHtml = activeDateGridDays.map(d => {
+          const pt = row.points[d] || { balance: 0, meta: { type: 'empty', sourceDate: 'No Data' } };
+          const balVal = Number(pt.balance) || 0;
+          monthlySum += balVal;
+          return `
+            <td class="py-2.5 px-2 text-right align-top">
+              <div class="relative">
+                <input type="number" step="0.01" value="${balVal.toFixed(2)}" oninput="updateRowBalance(${index}, ${d}, this.value)" class="w-full text-right font-mono font-semibold text-slate-900 bg-slate-50/80 hover:bg-white focus:bg-white border border-slate-200 focus:border-indigo-500 rounded-lg px-2 py-1.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20" />
+              </div>
+              <div id="badge_${d}_${row.id}" class="mt-1 flex justify-end no-print">${getBadgeHTML(pt.meta)}</div>
+            </td>
+          `;
+        }).join('');
+
+        const monthlyABB = monthlySum / Math.max(1, activeDateGridDays.length);
 
         tr.innerHTML = `
           <td class="py-2.5 pl-3 pr-1 text-center align-top pt-3.5">
@@ -2345,24 +2880,7 @@
           <td class="py-2.5 px-2 align-top pt-3">
             <input type="text" value="${row.label}" onchange="updateRowLabel(${index}, this.value)" class="w-full font-bold text-slate-800 bg-transparent border border-transparent hover:border-slate-200 focus:border-indigo-500 focus:bg-white rounded px-1.5 py-1 text-xs sm:text-sm focus:outline-none" />
           </td>
-          <td class="py-2.5 px-2 text-right align-top">
-            <div class="relative">
-              <input type="number" step="0.01" value="${Number(row.bal5).toFixed(2)}" oninput="updateRowBalance(${index}, 'bal5', this.value)" class="w-full text-right font-mono font-semibold text-slate-900 bg-slate-50/80 hover:bg-white focus:bg-white border border-slate-200 focus:border-indigo-500 rounded-lg px-2.5 py-1.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20" />
-            </div>
-            <div id="badge5_${row.id}" class="mt-1 flex justify-end no-print">${getBadgeHTML(row.meta5)}</div>
-          </td>
-          <td class="py-2.5 px-2 text-right align-top">
-            <div class="relative">
-              <input type="number" step="0.01" value="${Number(row.bal15).toFixed(2)}" oninput="updateRowBalance(${index}, 'bal15', this.value)" class="w-full text-right font-mono font-semibold text-slate-900 bg-slate-50/80 hover:bg-white focus:bg-white border border-slate-200 focus:border-indigo-500 rounded-lg px-2.5 py-1.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20" />
-            </div>
-            <div id="badge15_${row.id}" class="mt-1 flex justify-end no-print">${getBadgeHTML(row.meta15)}</div>
-          </td>
-          <td class="py-2.5 px-2 text-right align-top">
-            <div class="relative">
-              <input type="number" step="0.01" value="${Number(row.bal25).toFixed(2)}" oninput="updateRowBalance(${index}, 'bal25', this.value)" class="w-full text-right font-mono font-semibold text-slate-900 bg-slate-50/80 hover:bg-white focus:bg-white border border-slate-200 focus:border-indigo-500 rounded-lg px-2.5 py-1.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20" />
-            </div>
-            <div id="badge25_${row.id}" class="mt-1 flex justify-end no-print">${getBadgeHTML(row.meta25)}</div>
-          </td>
+          ${pointCellsHtml}
           <td class="py-2.5 px-3 text-right align-top pt-3.5 font-mono text-xs sm:text-sm font-semibold text-slate-600 bg-slate-50/80">
             <span id="rowSum_${row.id}">${formatINR(monthlySum, 0)}</span>
           </td>
@@ -2395,18 +2913,19 @@
       recalculateAll();
     }
 
-    function updateRowBalance(index, field, rawVal) {
+    function updateRowBalance(index, dayKey, rawVal) {
       const row = abbScheduleRows[index];
       if (!row) return;
+      if (!row.points) row.points = {};
       const numVal = parseFloat(rawVal);
-      row[field] = isNaN(numVal) ? 0 : numVal;
+      const newMeta = { type: 'manual', sourceDate: 'Edited' };
+      row.points[dayKey] = {
+        balance: isNaN(numVal) ? 0 : numVal,
+        meta: newMeta
+      };
 
-      const metaField = field === 'bal5' ? 'meta5' : field === 'bal15' ? 'meta15' : 'meta25';
-      row[metaField] = { type: 'manual', sourceDate: 'Edited' };
-
-      const badgeContainerId = field === 'bal5' ? `badge5_${row.id}` : field === 'bal15' ? `badge15_${row.id}` : `badge25_${row.id}`;
-      const badgeEl = document.getElementById(badgeContainerId);
-      if (badgeEl) badgeEl.innerHTML = getBadgeHTML(row[metaField]);
+      const badgeEl = document.getElementById(`badge_${dayKey}_${row.id}`);
+      if (badgeEl) badgeEl.innerHTML = getBadgeHTML(newMeta);
 
       recalculateAll();
     }
@@ -2420,18 +2939,18 @@
         nextYear = last.month === 11 ? last.year + 1 : last.year;
       }
 
+      const points = {};
+      activeDateGridDays.forEach(d => {
+        points[d] = { balance: 0, meta: { type: 'manual', sourceDate: 'Manual' } };
+      });
+
       abbScheduleRows.push({
         id: `row_${Date.now()}_${abbScheduleRows.length}`,
         included: true,
         year: nextYear,
         month: nextMonth,
         label: `${MONTH_NAMES_SHORT[nextMonth]} ${nextYear}`,
-        bal5: 0,
-        bal15: 0,
-        bal25: 0,
-        meta5: { type: 'manual', sourceDate: 'Manual' },
-        meta15: { type: 'manual', sourceDate: 'Manual' },
-        meta25: { type: 'manual', sourceDate: 'Manual' }
+        points
       });
 
       renderABBTable();
@@ -2451,13 +2970,19 @@
       blockUsageMap.clear();
       openingBalanceFallback = null;
       abbScheduleRows = [];
+      detectedBounceEvents = [];
+      detectedRecurringEmis = [];
+      creditTurnoverMetrics = { totalCreditSum: 0, creditCount: 0, monthlyAvgCredit: 0 };
       document.getElementById('uploadedFilesList').innerHTML = '';
       document.getElementById('scannedPdfWarningBanner').classList.add('hidden');
       document.getElementById('headerTxBadge').textContent = '0';
+      document.getElementById('headerBounceBadge').textContent = '0';
+      document.getElementById('tabBounceCountPill').textContent = '0';
       document.getElementById('tabTxCountPill').textContent = '0';
       document.getElementById('tabPagesCountPill').textContent = '0 Pgs';
       document.getElementById('diagMetricsPills').classList.add('hidden');
       document.getElementById('parserStatusText').textContent = 'Workspace reset — Upload a PDF bank statement above.';
+      updateUnderwritingKpiUI();
       renderABBTable();
       recalculateAll();
       showToast('All extracted transactions and balances cleared.', 'info');
@@ -2659,13 +3184,18 @@
       if (useSpikeCap) capBadge.classList.remove('hidden');
       else capBadge.classList.add('hidden');
 
+      const numPointsPerMonth = Math.max(1, activeDateGridDays.length);
+
       const rawMetrics = abbScheduleRows.map((r, idx) => {
-        const b5 = Number(r.bal5) || 0;
-        const b15 = Number(r.bal15) || 0;
-        const b25 = Number(r.bal25) || 0;
-        const sum = b5 + b15 + b25;
-        const abb = sum / 3;
-        return { idx, id: r.id, included: r.included, label: r.label, b5, b15, b25, sum, rawAbb: abb, effectiveAbb: abb, wasCapped: false };
+        const ptValues = {};
+        let sum = 0;
+        activeDateGridDays.forEach(d => {
+          const val = Number(r.points && r.points[d] ? r.points[d].balance : 0) || 0;
+          ptValues[d] = val;
+          sum += val;
+        });
+        const abb = sum / numPointsPerMonth;
+        return { idx, id: r.id, included: r.included, label: r.label, ptValues, sum, rawAbb: abb, effectiveAbb: abb, wasCapped: false };
       });
 
       const includedMetrics = rawMetrics.filter(m => m.included);
@@ -2699,33 +3229,40 @@
       });
 
       const countIncluded = includedMetrics.length;
-      let sum5 = 0, sum15 = 0, sum25 = 0, grandTotalSum = 0, sumOfMonthlyABBs = 0;
+      const sumByDay = {};
+      activeDateGridDays.forEach(d => { sumByDay[d] = 0; });
+
+      let grandTotalSum = 0, sumOfMonthlyABBs = 0;
       let peakMonthObj = null;
       let lowMonthObj = null;
       let lowestSinglePoint = null;
       let negativeOrZeroPoints = 0;
 
       includedMetrics.forEach(m => {
-        sum5 += m.b5;
-        sum15 += m.b15;
-        sum25 += m.b25;
+        activeDateGridDays.forEach(d => {
+          const pt = m.ptValues[d] || 0;
+          sumByDay[d] += pt;
+          if (lowestSinglePoint === null || pt < lowestSinglePoint) lowestSinglePoint = pt;
+          if (pt <= 0) negativeOrZeroPoints++;
+        });
         grandTotalSum += m.sum;
         sumOfMonthlyABBs += m.effectiveAbb;
 
         if (!peakMonthObj || m.effectiveAbb > peakMonthObj.effectiveAbb) peakMonthObj = m;
         if (!lowMonthObj || m.effectiveAbb < lowMonthObj.effectiveAbb) lowMonthObj = m;
-
-        [m.b5, m.b15, m.b25].forEach(pt => {
-          if (lowestSinglePoint === null || pt < lowestSinglePoint) lowestSinglePoint = pt;
-          if (pt <= 0) negativeOrZeroPoints++;
-        });
       });
 
       const overallABB = countIncluded > 0 ? (sumOfMonthlyABBs / countIncluded) : 0;
-      const avg5 = countIncluded > 0 ? (sum5 / countIncluded) : 0;
-      const avg15 = countIncluded > 0 ? (sum15 / countIncluded) : 0;
-      const avg25 = countIncluded > 0 ? (sum25 / countIncluded) : 0;
       const avgMonthlySum = countIncluded > 0 ? (grandTotalSum / countIncluded) : 0;
+
+      activeDateGridDays.forEach(d => {
+        const sEl = document.getElementById(`footSum_${d}`);
+        const aEl = document.getElementById(`footAvg_${d}`);
+        const sVal = sumByDay[d] || 0;
+        const aVal = countIncluded > 0 ? (sVal / countIncluded) : 0;
+        if (sEl) sEl.textContent = formatINR(sVal, 0);
+        if (aEl) aEl.textContent = formatINR(aVal, 0);
+      });
 
       const last6Slice = includedMetrics.slice(-6);
       const firstHalfSlice = includedMetrics.slice(0, Math.max(1, includedMetrics.length - 6));
@@ -2746,21 +3283,19 @@
         trendPct = ((last6MABB - firstHalfABB) / firstHalfABB) * 100;
       }
 
-      document.getElementById('footSum5').textContent = formatINR(sum5, 0);
-      document.getElementById('footSum15').textContent = formatINR(sum15, 0);
-      document.getElementById('footSum25').textContent = formatINR(sum25, 0);
-      document.getElementById('footGrandTotalSum').textContent = formatINR(grandTotalSum, 0);
-      document.getElementById('footSumOfMonthlyABBs').textContent = formatINR(sumOfMonthlyABBs, 0);
+      const gSumEl = document.getElementById('footGrandTotalSum');
+      const sAbbEl = document.getElementById('footSumOfMonthlyABBs');
+      const aSumEl = document.getElementById('footAvgMonthlySum');
+      const fAbbEl = document.getElementById('footFinalABB');
 
-      document.getElementById('footAvg5').textContent = formatINR(avg5, 0);
-      document.getElementById('footAvg15').textContent = formatINR(avg15, 0);
-      document.getElementById('footAvg25').textContent = formatINR(avg25, 0);
-      document.getElementById('footAvgMonthlySum').textContent = formatINR(avgMonthlySum, 0);
-      document.getElementById('footFinalABB').textContent = formatINR(overallABB, 2);
+      if (gSumEl) gSumEl.textContent = formatINR(grandTotalSum, 0);
+      if (sAbbEl) sAbbEl.textContent = formatINR(sumOfMonthlyABBs, 0);
+      if (aSumEl) aSumEl.textContent = formatINR(avgMonthlySum, 0);
+      if (fAbbEl) fAbbEl.textContent = formatINR(overallABB, 2);
 
       document.getElementById('kpiOverallABB').textContent = formatINR(overallABB, 2);
       document.getElementById('kpiOverallLakhs').textContent = formatLakhs(overallABB);
-      document.getElementById('kpiMonthsCountBadge').textContent = `${countIncluded} Active Month${countIncluded === 1 ? '' : 's'}`;
+      document.getElementById('kpiMonthsCountBadge').textContent = `${countIncluded} Active Mo${countIncluded === 1 ? '' : 's'}`;
 
       document.getElementById('kpiLast6MABB').textContent = formatINR(last6MABB, 2);
       document.getElementById('kpiLast3MABB').textContent = formatINR(last3MABB, 0);
@@ -2768,13 +3303,13 @@
       const trendBadge = document.getElementById('kpi6MTrendBadge');
       const trendLabel = document.getElementById('kpiTrendLabel');
       if (trendPct >= 0) {
-        trendBadge.className = 'px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800';
+        trendBadge.className = 'px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800';
         trendBadge.textContent = `+${trendPct.toFixed(1)}%`;
-        trendLabel.textContent = countIncluded > 0 ? 'Growing cashflow' : 'Upload PDF to analyze';
+        if (trendLabel) trendLabel.textContent = 'Positive 6M growth';
       } else {
-        trendBadge.className = 'px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800';
+        trendBadge.className = 'px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800';
         trendBadge.textContent = `${trendPct.toFixed(1)}%`;
-        trendLabel.textContent = 'Dip in recent 6M';
+        if (trendLabel) trendLabel.textContent = 'Dip in recent 6M';
       }
 
       document.getElementById('kpiPeakABB').textContent = peakMonthObj ? formatINR(peakMonthObj.effectiveAbb, 0) : '₹ 0';
@@ -2953,15 +3488,23 @@
 
       const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
       const newRows = [];
+      const reqCols = activeDateGridDays.length;
 
       lines.forEach((line, idx) => {
         const numberMatches = line.match(/-?(?:\d{1,3}(?:,\d{2,3})+|\d+)(?:\.\d{1,2})?/g) || [];
         const cleanNums = numberMatches.map(s => parseFloat(s.replace(/,/g, ''))).filter(n => !isNaN(n));
 
-        if (cleanNums.length >= 3) {
-          const last3 = cleanNums.slice(-3);
+        if (cleanNums.length >= reqCols) {
+          const lastN = cleanNums.slice(-reqCols);
           const labelPart = line.split(/[\t,]/)[0].trim();
           const hasAlphaLabel = /[A-Za-z]/.test(labelPart);
+          const points = {};
+          activeDateGridDays.forEach((d, dIdx) => {
+            points[d] = {
+              balance: lastN[dIdx] || 0,
+              meta: { type: 'manual', sourceDate: 'Excel Paste' }
+            };
+          });
 
           newRows.push({
             id: `row_paste_${Date.now()}_${idx}`,
@@ -2969,18 +3512,13 @@
             year: 2025,
             month: idx % 12,
             label: hasAlphaLabel ? labelPart : (abbScheduleRows[idx] ? abbScheduleRows[idx].label : `Month ${idx + 1}`),
-            bal5: last3[0],
-            bal15: last3[1],
-            bal25: last3[2],
-            meta5: { type: 'manual', sourceDate: 'Excel Paste' },
-            meta15: { type: 'manual', sourceDate: 'Excel Paste' },
-            meta25: { type: 'manual', sourceDate: 'Excel Paste' }
+            points
           });
         }
       });
 
       if (newRows.length === 0) {
-        showToast('Could not find 3 balance columns per row. Ensure each line has 5th, 15th, and 25th numbers.', 'error');
+        showToast(`Could not find ${reqCols} balance columns per row for the active date grid (${activeDateGridDays.join(', ')}).`, 'error');
         return;
       }
 
@@ -3004,18 +3542,18 @@
       document.getElementById('accountNumber').value = '50200048291044';
 
       const sampleMonthsConfig = [
-        { y: 2025, m: 3,  tx: [[2, 412500, 'BY NEFT-OPENING RECEIPT'], [5, 468200, 'UPI/CR/CUSTOMER COLL'], [12, 534000, 'NEFT CR-AARTI TRADERS'], [18, 492150, 'CHQ PAID-SUPPLIER'], [25, 518900, 'RTGS CR-SHREEJI CORP'], [29, 488000, 'GST PMT APR']] },
-        { y: 2025, m: 4,  tx: [[3, 524400, 'IMPS CR-CLIENT ADV'], [5, 562800, 'NEFT CR-VIKAS ENT'], [15, 615000, 'RTGS CR-MEHTA SONS'], [22, 578400, 'VENDOR SETTLEMENT'], [28, 594200, 'POS SETTLEMENT CR']] },
-        { y: 2025, m: 5,  tx: [[2, 571000, 'RENT & UTILITY DR'], [8, 632000, 'RTGS CR-INV-409'], [15, 648500, 'NEFT CR-DEALER PAY'], [24, 689000, 'BULK IMPS RECEIPT'], [30, 655000, 'SALARY DISBURSAL']] },
-        { y: 2025, m: 6,  tx: [[5, 672300, 'NEFT CR-KOTHARI LTD'], [13, 712400, 'RTGS CR-ORDER-882'], [19, 664000, 'CUSTOM DUTY PMT'], [25, 704800, 'UPI SETTLEMENT'], [28, 691000, 'ELECTRICITY BILL']] },
-        { y: 2025, m: 7,  tx: [[4, 738000, 'AUG RECEIPT'], [11, 785600, 'RTGS CR-PATEL INFRA'], [15, 842000, 'ADVANCE CR'], [25, 895400, 'WHOLESALE RECEIPTS'], [31, 864000, 'CLOSING ADJ']] },
-        { y: 2025, m: 8,  tx: [[3, 815000, 'VENDOR DR'], [7, 792000, 'INSURANCE RENEWAL'], [15, 748500, 'NEFT CR-NATIONAL CO'], [23, 781200, 'RTGS CR-DIST-12'], [29, 769000, 'STAFF PAYROLL']] },
-        { y: 2025, m: 9,  tx: [[5, 794600, 'UPI/CR/BATCH-05'], [14, 828900, 'NEFT CR-SURAT TEXTILES'], [20, 795000, 'RAW MATERIAL DR'], [25, 846200, 'RTGS CR-BUYER-09'], [30, 831000, 'GST CHALLAN DR']] },
-        { y: 2025, m: 10, tx: [[2, 855000, 'IMPS CR-DISTRIBUTOR'], [10, 812400, 'GODOWN RENT'], [15, 869300, 'RTGS CR-JAIN CORP'], [24, 884100, 'NEFT CR-EXPORT REC'], [29, 872000, 'UTILITY DR']] },
-        { y: 2025, m: 11, tx: [[5, 912500, 'RTGS CR-WINTER ORD'], [12, 876000, 'FREIGHT & LOGISTICS'], [17, 905400, 'NEFT CR-RETAIL HUB'], [25, 938000, 'RTGS CR-PRIME IND'], [31, 919500, 'VENDOR PAYOUT']] },
-        { y: 2026, m: 0,  tx: [[4, 945000, 'NEFT CR-CLIENT-77'], [9, 918200, 'PACKAGING SUPPLIER'], [15, 964800, 'JAN ADVANCE CR'], [23, 982500, 'RTGS CR-METRO MART'], [28, 959000, 'GST PMT JAN']] },
-        { y: 2026, m: 1,  tx: [[5, 994200, 'RTGS CR-FEB ORD'], [14, 1045000, 'BULK DEALER RECEIPT'], [21, 988000, 'INVENTORY PURCHASE'], [25, 1072500, 'RTGS CR-CORPORATE SALE'], [28, 1038000, 'SALARY & BONUS']] },
-        { y: 2026, m: 2,  tx: [[3, 1086000, 'MARCH FY CLOSING CR'], [5, 1124000, 'RTGS CR-APEX TRADERS'], [15, 1185600, 'NEFT CR-WHOLESALE'], [24, 1142000, 'SUPPLIER CLEARANCE'], [31, 1168000, 'FY END CLOSING CR']] }
+        { y: 2025, m: 3,  tx: [[2, 412500, 'BY NEFT-OPENING RECEIPT'], [5, 468200, 'UPI/CR/CUSTOMER COLL'], [8, 439700, 'ACH DR-BAJAJ FINANCE EMI-104'], [12, 534000, 'NEFT CR-AARTI TRADERS'], [18, 492150, 'CHQ PAID-SUPPLIER'], [25, 518900, 'RTGS CR-SHREEJI CORP'], [29, 488000, 'GST PMT APR']] },
+        { y: 2025, m: 4,  tx: [[3, 524400, 'IMPS CR-CLIENT ADV'], [5, 562800, 'NEFT CR-VIKAS ENT'], [8, 534300, 'ACH DR-BAJAJ FINANCE EMI-105'], [15, 615000, 'RTGS CR-MEHTA SONS'], [22, 578400, 'VENDOR SETTLEMENT'], [28, 594200, 'POS SETTLEMENT CR']] },
+        { y: 2025, m: 5,  tx: [[2, 571000, 'RENT & UTILITY DR'], [8, 542500, 'ACH DR-BAJAJ FINANCE EMI-106'], [10, 632000, 'RTGS CR-INV-409'], [15, 648500, 'NEFT CR-DEALER PAY'], [24, 689000, 'BULK IMPS RECEIPT'], [30, 655000, 'SALARY DISBURSAL']] },
+        { y: 2025, m: 6,  tx: [[5, 672300, 'NEFT CR-KOTHARI LTD'], [8, 643800, 'ACH DR-BAJAJ FINANCE EMI-107'], [13, 712400, 'RTGS CR-ORDER-882'], [19, 664000, 'CUSTOM DUTY PMT'], [25, 704800, 'UPI SETTLEMENT'], [28, 691000, 'ELECTRICITY BILL']] },
+        { y: 2025, m: 7,  tx: [[4, 738000, 'AUG RECEIPT'], [8, 709500, 'ACH DR-BAJAJ FINANCE EMI-108'], [11, 785600, 'RTGS CR-PATEL INFRA'], [15, 842000, 'ADVANCE CR'], [25, 895400, 'WHOLESALE RECEIPTS'], [31, 864000, 'CLOSING ADJ']] },
+        { y: 2025, m: 8,  tx: [[3, 815000, 'VENDOR DR'], [8, 786500, 'ACH DR-BAJAJ FINANCE EMI-109'], [10, 786000, 'ECS RETURN INSUFFICIENT FUNDS CHG'], [15, 748500, 'NEFT CR-NATIONAL CO'], [23, 781200, 'RTGS CR-DIST-12'], [29, 769000, 'STAFF PAYROLL']] },
+        { y: 2025, m: 9,  tx: [[5, 794600, 'UPI/CR/BATCH-05'], [8, 766100, 'ACH DR-BAJAJ FINANCE EMI-110'], [14, 828900, 'NEFT CR-SURAT TEXTILES'], [20, 795000, 'RAW MATERIAL DR'], [25, 846200, 'RTGS CR-BUYER-09'], [30, 831000, 'GST CHALLAN DR']] },
+        { y: 2025, m: 10, tx: [[2, 855000, 'IMPS CR-DISTRIBUTOR'], [8, 826500, 'ACH DR-BAJAJ FINANCE EMI-111'], [10, 812400, 'GODOWN RENT'], [15, 869300, 'RTGS CR-JAIN CORP'], [24, 884100, 'NEFT CR-EXPORT REC'], [29, 872000, 'UTILITY DR']] },
+        { y: 2025, m: 11, tx: [[5, 912500, 'RTGS CR-WINTER ORD'], [8, 884000, 'ACH DR-BAJAJ FINANCE EMI-112'], [12, 876000, 'FREIGHT & LOGISTICS'], [17, 905400, 'NEFT CR-RETAIL HUB'], [25, 938000, 'RTGS CR-PRIME IND'], [31, 919500, 'VENDOR PAYOUT']] },
+        { y: 2026, m: 0,  tx: [[4, 945000, 'NEFT CR-CLIENT-77'], [8, 916500, 'ACH DR-BAJAJ FINANCE EMI-113'], [9, 918200, 'PACKAGING SUPPLIER'], [15, 964800, 'JAN ADVANCE CR'], [23, 982500, 'RTGS CR-METRO MART'], [28, 959000, 'GST PMT JAN']] },
+        { y: 2026, m: 1,  tx: [[5, 994200, 'RTGS CR-FEB ORD'], [8, 965700, 'ACH DR-BAJAJ FINANCE EMI-114'], [14, 1045000, 'BULK DEALER RECEIPT'], [21, 988000, 'INVENTORY PURCHASE'], [25, 1072500, 'RTGS CR-CORPORATE SALE'], [28, 1038000, 'SALARY & BONUS']] },
+        { y: 2026, m: 2,  tx: [[3, 1086000, 'MARCH FY CLOSING CR'], [5, 1124000, 'RTGS CR-APEX TRADERS'], [8, 1095500, 'ACH DR-BAJAJ FINANCE EMI-115'], [15, 1185600, 'NEFT CR-WHOLESALE'], [24, 1142000, 'SUPPLIER CLEARANCE'], [31, 1168000, 'FY END CLOSING CR']] }
       ];
 
       let seq = 1;
@@ -3063,38 +3601,53 @@
       const bank = document.getElementById('bankName').value || 'Bank';
       const accNo = document.getElementById('accountNumber').value || '';
 
-      let csv = `BANKING ABB & LOAN ELIGIBILITY WORKSHEET (CAM)\n`;
-      csv += `Applicant Name,"${client.replace(/"/g, '""')}",Bank Name,"${bank.replace(/"/g, '""')}",Account No,"${accNo}"\n\n`;
-      csv += `Included,Month & Year,5th Closing Balance (INR),5th Source,15th Closing Balance (INR),15th Source,25th Closing Balance (INR),25th Source,Monthly Sum (INR),Monthly ABB (INR)\n`;
+      const dayColHeaders = activeDateGridDays.map(d => `${getOrdinalSuffix(d)} Closing Balance (INR),${getOrdinalSuffix(d)} Source`).join(',');
+
+      let csv = `BankELi — BANKING ABB & LOAN ELIGIBILITY WORKSHEET (CAM)\n`;
+      csv += `Applicant Name,"${client.replace(/"/g, '""')}",Bank Name,"${bank.replace(/"/g, '""')}",Account No,"${accNo}"\n`;
+      csv += `ABB Date Grid Rule,"${activeDateGridDays.map(getOrdinalSuffix).join(', ')}"\n\n`;
+      csv += `Included,Month & Year,${dayColHeaders},Monthly Sum (INR),Monthly ABB (INR)\n`;
 
       const includedRows = abbScheduleRows.filter(r => r.included);
-      let sum5 = 0, sum15 = 0, sum25 = 0, sumMonthlyABB = 0;
+      const sumByDay = {};
+      activeDateGridDays.forEach(d => { sumByDay[d] = 0; });
+      let sumMonthlyABB = 0;
+      let grandTotalAllPoints = 0;
 
       abbScheduleRows.forEach(r => {
-        const b5 = Number(r.bal5) || 0;
-        const b15 = Number(r.bal15) || 0;
-        const b25 = Number(r.bal25) || 0;
-        const mSum = b5 + b15 + b25;
-        const mAbb = mSum / 3;
+        let mSum = 0;
+        const pointCsvCols = activeDateGridDays.map(d => {
+          const pt = (r.points && r.points[d]) ? r.points[d] : { balance: 0, meta: { sourceDate: '' } };
+          const b = Number(pt.balance) || 0;
+          mSum += b;
+          if (r.included) {
+            sumByDay[d] += b;
+            grandTotalAllPoints += b;
+          }
+          return `${b.toFixed(2)},"${pt.meta?.sourceDate || ''}"`;
+        }).join(',');
 
+        const mAbb = mSum / Math.max(1, activeDateGridDays.length);
         if (r.included) {
-          sum5 += b5;
-          sum15 += b15;
-          sum25 += b25;
           sumMonthlyABB += mAbb;
         }
 
-        csv += `${r.included ? 'YES' : 'NO'},"${r.label}",${b5.toFixed(2)},"${r.meta5?.sourceDate || ''}",${b15.toFixed(2)},"${r.meta15?.sourceDate || ''}",${b25.toFixed(2)},"${r.meta25?.sourceDate || ''}",${mSum.toFixed(2)},${mAbb.toFixed(2)}\n`;
+        csv += `${r.included ? 'YES' : 'NO'},"${r.label}",${pointCsvCols},${mSum.toFixed(2)},${mAbb.toFixed(2)}\n`;
       });
 
       const n = includedRows.length || 1;
       const finalABB = sumMonthlyABB / n;
 
-      csv += `\nTOTAL (Included Months),${includedRows.length} Months,${sum5.toFixed(2)},,${sum15.toFixed(2)},,${sum25.toFixed(2)},,${(sum5 + sum15 + sum25).toFixed(2)},${sumMonthlyABB.toFixed(2)}\n`;
-      csv += `AVERAGE BANK BALANCE (ABB),Overall,${(sum5 / n).toFixed(2)},,${(sum15 / n).toFixed(2)},,${(sum25 / n).toFixed(2)},,${((sum5 + sum15 + sum25) / n).toFixed(2)},${finalABB.toFixed(2)}\n\n`;
+      const totalDayCols = activeDateGridDays.map(d => `${sumByDay[d].toFixed(2)},`).join(',');
+      const avgDayCols = activeDateGridDays.map(d => `${(sumByDay[d] / n).toFixed(2)},`).join(',');
 
-      csv += `LOAN ELIGIBILITY SUMMARY\n`;
+      csv += `\nTOTAL (Included Months),${includedRows.length} Months,${totalDayCols}${grandTotalAllPoints.toFixed(2)},${sumMonthlyABB.toFixed(2)}\n`;
+      csv += `AVERAGE BANK BALANCE (ABB),Overall,${avgDayCols}${(grandTotalAllPoints / n).toFixed(2)},${finalABB.toFixed(2)}\n\n`;
+
+      csv += `UNDERWRITING & LOAN ELIGIBILITY SUMMARY\n`;
       csv += `Selected ABB Base,${document.getElementById('selectedABBBaseDisplay').textContent.replace(/[^\d.-]/g, '')}\n`;
+      csv += `12M Business Credit Turnover,${creditTurnoverMetrics.totalCreditSum.toFixed(2)}\n`;
+      csv += `Cheque / ECS Bounces (12M),${detectedBounceEvents.filter(e => e.included && e.category === 'BOUNCE').length}\n`;
       csv += `Net Eligible Monthly EMI,${document.getElementById('valNetEligibleEmi').textContent.replace(/[^\d.-]/g, '')}\n`;
       csv += `Max Eligible Loan Amount,${document.getElementById('valFinalEligibleLoan').textContent.replace(/[^\d.-]/g, '')}\n`;
 
@@ -3102,12 +3655,12 @@
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `ABB_CAM_${client.replace(/[^a-zA-Z0-9]/g, '_')}.csv`;
+      a.download = `BankELi_CAM_${client.replace(/[^a-zA-Z0-9]/g, '_')}.csv`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      showToast('Exported CAM Worksheet to Excel CSV.', 'success');
+      showToast('Exported BankELi CAM Worksheet to Excel CSV.', 'success');
     }
 
     // ============================================================================
@@ -3116,16 +3669,10 @@
     window.onload = function () {
       lucide.createIcons();
       setupDragAndDrop();
+      updateDateGridBrandingLabels();
       renderABBTable();
       recalculateAll();
     };
   </script>
-<!-- Website Footer -->
-  <footer class="no-print border-t border-slate-200/80 bg-white/90 py-5 mt-10">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500">
-      <p>© 2026 <span class="font-semibold text-slate-700">BankELi</span>. All rights reserved.</p>
-      <p class="font-medium text-slate-600">Made with ❤️ by Vishal</p>
-    </div>
-  </footer>
 </body>
 </html>
