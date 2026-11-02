@@ -1,0 +1,3124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BankELi — 12-Month Average Bank Balance & Loan Eligibility Workbench</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Mozilla PDF.js v3.11.174 + PDF Worker (Both loaded directly in head so window.pdfjsWorker.WorkerMessageHandler is always defined on file:///) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          }
+        }
+      }
+    };
+  </script>
+
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #f8fafc;
+      color: #0f172a;
+    }
+
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #f1f5f9;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+
+    input[type="number"]::-webkit-inner-spin-button,
+    input[type="number"]::-webkit-outer-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    input[type="number"] {
+      -moz-appearance: textfield;
+    }
+
+    @media print {
+      body {
+        background: #ffffff !important;
+        color: #000000 !important;
+        font-size: 11px !important;
+      }
+      .no-print {
+        display: none !important;
+      }
+      .print-only {
+        display: block !important;
+      }
+      .print-break-inside-avoid {
+        break-inside: avoid;
+      }
+      .print-full-width {
+        width: 100% !important;
+        max-width: 100% !important;
+        grid-column: span 12 / span 12 !important;
+      }
+      .print-shadow-none {
+        box-shadow: none !important;
+        border: 1px solid #cbd5e1 !important;
+      }
+      input, select {
+        border: none !important;
+        background: transparent !important;
+        padding: 0 !important;
+        font-weight: 600 !important;
+      }
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col selection:bg-indigo-600 selection:text-white">
+
+  <!-- Top Navigation Header -->
+  <header class="bg-slate-900 text-white border-b border-slate-800 sticky top-0 z-30 no-print">
+    <div class="max-w-[1600px] mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-emerald-400 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+          <i data-lucide="landmark" class="w-5 h-5 text-white"></i>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-lg font-bold tracking-tight text-white">BankELi</h1>
+            <span class="text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-400/30">
+              5th • 15th • 25th EOD Engine
+            </span>
+          </div>
+          <p class="text-xs text-slate-400">Real-Time Indian Bank Statement PDF Parser</p>
+        </div>
+      </div>
+
+      <!-- Quick Action Toolbar -->
+      <div class="flex flex-wrap items-center gap-2 sm:gap-2.5">
+        <button onclick="switchMainTab('TRANSACTIONS')" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-indigo-600/20 text-indigo-200 hover:bg-indigo-600/30 border border-indigo-400/30 transition cursor-pointer">
+          <i data-lucide="list-checks" class="w-4 h-4 text-indigo-300"></i>
+          <span>Extracted Transactions</span>
+          <span id="headerTxBadge" class="ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-indigo-500 text-white font-mono">0</span>
+        </button>
+
+        <button onclick="loadSampleDemoStatement()" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700 transition cursor-pointer" title="Optional: Load a test demo statement if you don't have a PDF handy">
+          <i data-lucide="flask-conical" class="w-4 h-4 text-amber-400"></i>
+          <span>Load Sample Statement (Test Demo)</span>
+        </button>
+
+        <button onclick="exportToCSV()" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-slate-800 text-slate-200 hover:bg-slate-700 border border-slate-700 transition cursor-pointer">
+          <i data-lucide="file-spreadsheet" class="w-4 h-4 text-emerald-400"></i>
+          <span>Export Excel (CSV)</span>
+        </button>
+
+        <button onclick="window.print()" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm transition cursor-pointer">
+          <i data-lucide="printer" class="w-4 h-4"></i>
+          <span>Print CAM Sheet</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Print-Only Official CAM Header -->
+  <div class="hidden print-only border-b-2 border-slate-900 pb-4 mb-6 px-6 pt-4">
+    <div class="flex justify-between items-start">
+      <div>
+        <h1 class="text-2xl font-extrabold text-slate-900 uppercase tracking-tight">BANKING ABB & LOAN ELIGIBILITY WORKSHEET (CAM)</h1>
+        <p class="text-xs text-slate-600 mt-0.5">Computation Method: Standard 5th, 15th & 25th End-of-Day (EOD) Closing Balance Average</p>
+      </div>
+      <div class="text-right text-xs text-slate-600">
+        <div class="font-bold text-slate-900" id="printDateLabel">Date: --</div>
+        <div>Verified by Loan Consultant</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toastContainer" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 max-w-md w-full pointer-events-none px-4 no-print"></div>
+
+  <!-- Hidden Canvas for OCR Page Rendering -->
+  <canvas id="ocrRenderCanvas" class="hidden"></canvas>
+
+  <!-- Main Workspace Container -->
+  <main class="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 py-5 space-y-5">
+
+    <!-- 1. PDF Upload + Extraction Diagnostics & Controls Section (Hidden in Print) -->
+    <section class="bg-white rounded-2xl shadow-sm border border-slate-200/90 p-5 no-print space-y-4">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+        <!-- Left 7 Cols: Drag & Drop PDF Zone -->
+        <div class="lg:col-span-7 flex flex-col">
+          <div id="dropZone"
+               onclick="document.getElementById('pdfFileInput').click()"
+               class="flex-1 relative group border-2 border-dashed border-indigo-300 hover:border-indigo-500 bg-indigo-50/30 hover:bg-indigo-50/70 rounded-2xl p-5 transition-all cursor-pointer flex flex-col sm:flex-row items-center gap-5">
+            <input id="pdfFileInput" type="file" accept="application/pdf,.pdf" multiple class="hidden" onchange="handleFileSelect(event)" />
+            <div class="w-16 h-16 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-md shadow-indigo-500/20 shrink-0 group-hover:scale-105 transition">
+              <i data-lucide="file-up" class="w-8 h-8"></i>
+            </div>
+            <div class="flex-1 text-center sm:text-left">
+              <div class="flex flex-wrap items-center justify-center sm:justify-start gap-2">
+                <h2 class="text-base font-bold text-slate-900">Upload Client Bank Statement PDF(s)</h2>
+                <span class="text-[11px] font-semibold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200">100% Real Client PDF Data</span>
+              </div>
+              <p class="text-xs text-slate-600 mt-1 leading-relaxed">
+                Drop 1 or multiple PDF bank statements (e.g., 12-month PDF or two 6-month PDFs from <strong>HDFC, SBI, ICICI, Axis, Kotak, BoB, IDFC, PNB, Yes Bank</strong>). Uses gap-aware spatial column reconstruction to extract real <strong>5th, 15th & 25th EOD</strong> closing balances.
+              </p>
+              <div class="mt-2.5 flex flex-wrap items-center justify-center sm:justify-start gap-2 text-[11px] text-indigo-700 font-semibold">
+                <span class="inline-flex items-center gap-1 bg-white px-2 py-0.5 rounded border border-indigo-200"><i data-lucide="check-circle-2" class="w-3.5 h-3.5 text-emerald-600"></i> 2-Digit & 4-Digit Years (DD/MM/YY & DD-MMM-YYYY)</span>
+                <span class="inline-flex items-center gap-1 bg-white px-2 py-0.5 rounded border border-indigo-200"><i data-lucide="check-circle-2" class="w-3.5 h-3.5 text-emerald-600"></i> Multi-Line Narration Block Stitching</span>
+                <span class="inline-flex items-center gap-1 bg-white px-2 py-0.5 rounded border border-indigo-200"><i data-lucide="scan-line" class="w-3.5 h-3.5 text-purple-600"></i> Built-in Tesseract OCR for Scanned PDFs</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right 5 Cols: Real-Time Parsing Controls -->
+        <div class="lg:col-span-5 flex flex-col justify-between bg-slate-50 rounded-2xl p-4 border border-slate-200/90 space-y-3">
+          <div class="flex items-center justify-between border-b border-slate-200 pb-2">
+            <span class="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+              <i data-lucide="sliders-horizontal" class="w-4 h-4 text-indigo-600"></i>
+              <span>PDF Column & Order Controls</span>
+            </span>
+            <span class="text-[11px] text-slate-500">Changes re-evaluate immediately</span>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <!-- Control 1: Balance Column Selector -->
+            <div>
+              <label for="balanceColRuleSelect" class="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">
+                Balance Column Selector
+              </label>
+              <select id="balanceColRuleSelect" onchange="reEvaluateParsedBlocks()" class="w-full px-2.5 py-2 rounded-lg border border-slate-300 text-xs font-semibold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                <option value="AUTO" selected>Auto (Header X-Match / Rightmost)</option>
+                <option value="RIGHTMOST">Rightmost Decimal in Block</option>
+                <option value="DATE_LINE_LAST">Last Decimal on Date Line Only</option>
+                <option value="SECOND_RIGHT">2nd Decimal from Right</option>
+              </select>
+            </div>
+
+            <!-- Control 2: Statement Chronological Order -->
+            <div>
+              <label for="statementOrderSelect" class="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">
+                Statement Row Order
+              </label>
+              <select id="statementOrderSelect" onchange="reEvaluateParsedBlocks()" class="w-full px-2.5 py-2 rounded-lg border border-slate-300 text-xs font-semibold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                <option value="AUTO" selected>Auto-Detect (Oldest vs Newest)</option>
+                <option value="ASC">Oldest → Newest (Last row = EOD)</option>
+                <option value="DESC">Newest → Oldest (Top row = EOD)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+            <!-- Control 3: PDF Password (if locked) -->
+            <div>
+              <label for="pdfPasswordInput" class="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">
+                Pre-fill PDF Password (Optional)
+              </label>
+              <div class="relative">
+                <input id="pdfPasswordInput" type="password" placeholder="If statement is locked" class="w-full pl-2.5 pr-8 py-1.5 rounded-lg border border-slate-300 text-xs font-mono text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                <button type="button" onclick="togglePasswordVisibility()" class="absolute right-2 top-1.5 text-slate-400 hover:text-slate-600">
+                  <i id="pwdEyeIcon" data-lucide="eye" class="w-4 h-4"></i>
+                </button>
+              </div>
+            </div>
+
+            <!-- Control 4: Dr Balance Handling -->
+            <div class="flex flex-col justify-end">
+              <label class="inline-flex items-center gap-2 text-xs font-semibold text-slate-700 bg-white px-3 py-2 rounded-lg border border-slate-200 cursor-pointer">
+                <input id="treatDrNegativeToggle" type="checkbox" checked onchange="reEvaluateParsedBlocks()" class="rounded text-indigo-600" />
+                <span>Treat 'Dr' / '-' Bal as Negative</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Action Row -->
+          <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200">
+            <div class="flex flex-wrap items-center gap-2">
+              <button type="button" onclick="document.getElementById('pdfFileInput').click()" class="px-3.5 py-2 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition cursor-pointer inline-flex items-center gap-1.5 shadow-xs">
+                <i data-lucide="folder-open" class="w-3.5 h-3.5"></i>
+                <span>Browse PDF(s)</span>
+              </button>
+              <button type="button" id="btnRunOcrTop" onclick="runTesseractOcrOnLoadedFiles()" class="hidden px-3 py-2 rounded-lg text-xs font-semibold bg-purple-600 hover:bg-purple-500 text-white transition cursor-pointer inline-flex items-center gap-1.5 shadow-xs">
+                <i data-lucide="scan-text" class="w-3.5 h-3.5"></i>
+                <span>Run OCR (Scanned PDF)</span>
+              </button>
+            </div>
+
+            <button type="button" onclick="openBulkPasteModal()" class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold underline cursor-pointer">
+              Or Paste from Excel
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Scanned PDF / Low Text Warning Banner with 1-Click Tesseract.js OCR -->
+      <div id="scannedPdfWarningBanner" class="hidden rounded-xl border-2 border-amber-400 bg-amber-50 p-4">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div class="flex items-start gap-3">
+            <div class="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 mt-0.5">
+              <i data-lucide="scan-line" class="w-5 h-5"></i>
+            </div>
+            <div>
+              <h4 class="text-sm font-bold text-amber-950" id="scannedWarningTitle">Scanned Image PDF Detected (No Selectable Text Layer Found)</h4>
+              <p class="text-xs text-amber-900 mt-0.5" id="scannedWarningDesc">
+                This PDF appears to be a scanned image or uses non-standard glyph encoding. Click the button on the right to run built-in client-side Optical Character Recognition (Tesseract.js OCR) on each page.
+              </p>
+              <div id="ocrProgressBarWrap" class="hidden mt-2.5 w-full max-w-md bg-amber-200 rounded-full h-2 overflow-hidden">
+                <div id="ocrProgressBar" class="bg-purple-600 h-2 transition-all duration-200" style="width: 0%"></div>
+              </div>
+            </div>
+          </div>
+          <button type="button" id="btnRunOcrBanner" onclick="runTesseractOcrOnLoadedFiles()" class="px-4 py-2.5 rounded-xl text-xs font-bold bg-purple-700 hover:bg-purple-600 text-white shadow-md transition cursor-pointer inline-flex items-center gap-2 shrink-0">
+            <i data-lucide="Sparkles" class="w-4 h-4"></i>
+            <span>Run OCR on Scanned PDF (Tesseract.js)</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Live Extraction Diagnostics Bar -->
+      <div id="diagnosticBanner" class="rounded-xl border border-slate-200 bg-slate-50 p-3.5 transition-all">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div class="flex items-center gap-2.5">
+            <span id="diagStatusDot" class="w-2.5 h-2.5 rounded-full bg-slate-400"></span>
+            <span id="parserStatusText" class="text-xs font-bold text-slate-800">
+              Ready — Upload your client's PDF bank statement above to extract real 5th, 15th & 25th closing balances.
+            </span>
+          </div>
+          <div id="diagMetricsPills" class="hidden flex-wrap items-center gap-2 text-[11px] font-mono">
+            <span id="diagBankPill" class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-sans font-semibold">Bank: --</span>
+            <span id="diagOrderPill" class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-sans font-semibold">Order: --</span>
+            <span id="diagPagesPill" class="px-2 py-0.5 rounded bg-slate-200 text-slate-800">0 Pages</span>
+            <span id="diagTxCountPill" class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-semibold">0 Txns</span>
+            <span id="diagDateRangePill" class="px-2 py-0.5 rounded bg-blue-100 text-blue-800">-- to --</span>
+            <button onclick="switchMainTab('TRANSACTIONS')" class="px-2.5 py-0.5 rounded bg-slate-900 text-white font-sans font-semibold hover:bg-slate-700 cursor-pointer">
+              Inspect All Rows →
+            </button>
+          </div>
+        </div>
+        <div id="uploadedFilesList" class="mt-2 space-y-1.5 empty:hidden"></div>
+      </div>
+    </section>
+
+    <!-- 2. Client & Bank Dossier Bar -->
+    <section class="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-4 sm:p-5 print-shadow-none">
+      <div class="flex items-center justify-between mb-3 no-print">
+        <div class="flex items-center gap-2">
+          <i data-lucide="briefcase" class="w-4 h-4 text-indigo-600"></i>
+          <h2 class="text-xs font-bold uppercase tracking-wider text-slate-500">Client & Bank Account Dossier (Auto-detected from PDF where available)</h2>
+        </div>
+        <span class="text-xs text-slate-400">Included in CSV & Printed CAM Sheet</span>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div>
+          <label class="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Applicant / Business Name</label>
+          <input id="clientName" type="text" value="" placeholder="Auto-filled or enter Client Name" class="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+        </div>
+        <div>
+          <label class="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Bank Name</label>
+          <input id="bankName" type="text" list="indianBanksList" value="" placeholder="Auto-filled or select Bank" class="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white" />
+          <datalist id="indianBanksList">
+            <option value="HDFC Bank"></option>
+            <option value="State Bank of India (SBI)"></option>
+            <option value="ICICI Bank"></option>
+            <option value="Axis Bank"></option>
+            <option value="Kotak Mahindra Bank"></option>
+            <option value="Bank of Baroda"></option>
+            <option value="Punjab National Bank (PNB)"></option>
+            <option value="IDFC FIRST Bank"></option>
+            <option value="Yes Bank"></option>
+            <option value="IndusInd Bank"></option>
+            <option value="Union Bank of India"></option>
+            <option value="Canara Bank"></option>
+            <option value="AU Small Finance Bank"></option>
+            <option value="Federal Bank"></option>
+          </datalist>
+        </div>
+        <div>
+          <label class="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Account Type</label>
+          <select id="accountType" class="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+            <option value="Current Account (Business)">Current Account (Business)</option>
+            <option value="Savings Account (Individual)">Savings Account (Individual)</option>
+            <option value="Cash Credit / Overdraft (CC/OD)">Cash Credit / Overdraft (CC/OD)</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">A/C Number / Ref ID</label>
+          <input id="accountNumber" type="text" value="" placeholder="Auto-filled or enter A/C No" class="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm font-mono font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+        </div>
+        <div>
+          <label class="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Target Loan Product</label>
+          <select id="loanProduct" onchange="applyLoanProductPreset()" class="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm font-semibold text-indigo-700 bg-indigo-50/50 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <option value="BL">Unsecured Business Loan (16% • 36M)</option>
+            <option value="PL">Personal Loan (13.5% • 48M)</option>
+            <option value="LAP">Loan Against Property - LAP (10.25% • 120M)</option>
+            <option value="HL">Home Loan - Banking Surrogate (8.85% • 180M)</option>
+            <option value="WC">Working Capital / Machinery (12.5% • 60M)</option>
+          </select>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. KPI Summary Cards (4 Cards) -->
+    <section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 print-break-inside-avoid">
+      <!-- Card 1: 12-Month Average Bank Balance -->
+      <div class="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white rounded-2xl p-5 shadow-md border border-indigo-500/20 relative overflow-hidden print-shadow-none">
+        <div class="flex items-start justify-between">
+          <div>
+            <span class="text-[11px] font-bold uppercase tracking-wider text-indigo-300">Overall Average Bank Balance (ABB)</span>
+            <div id="kpiOverallABB" class="text-2xl sm:text-3xl font-extrabold font-mono tracking-tight mt-1 text-white">₹ 0.00</div>
+          </div>
+          <div class="w-10 h-10 rounded-xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center no-print">
+            <i data-lucide="wallet" class="w-5 h-5 text-indigo-300"></i>
+          </div>
+        </div>
+        <div class="mt-3 pt-3 border-t border-white/10 flex items-center justify-between text-xs">
+          <span id="kpiOverallLakhs" class="font-semibold text-emerald-300">₹ 0.00 Lakhs</span>
+          <span id="kpiMonthsCountBadge" class="text-slate-300 font-medium">0 Active Months</span>
+        </div>
+      </div>
+
+      <!-- Card 2: Last 6-Month ABB vs First Half ABB -->
+      <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200/80 flex flex-col justify-between print-shadow-none">
+        <div class="flex items-start justify-between">
+          <div>
+            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Last 6-Month ABB (Recent Trend)</span>
+            <div id="kpiLast6MABB" class="text-2xl font-extrabold font-mono tracking-tight mt-1 text-slate-900">₹ 0.00</div>
+          </div>
+          <span id="kpi6MTrendBadge" class="px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700">
+            0.0%
+          </span>
+        </div>
+        <div class="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+          <span>Last 3M ABB: <strong id="kpiLast3MABB" class="text-slate-700 font-mono">₹ 0</strong></span>
+          <span id="kpiTrendLabel" class="font-medium text-slate-600">Upload PDF to analyze</span>
+        </div>
+      </div>
+
+      <!-- Card 3: Highest & Lowest Monthly ABB -->
+      <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200/80 flex flex-col justify-between print-shadow-none">
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <span class="text-[10px] font-bold uppercase tracking-wider text-emerald-600 flex items-center gap-1">
+              <i data-lucide="trending-up" class="w-3.5 h-3.5"></i> Peak Month ABB
+            </span>
+            <div id="kpiPeakABB" class="text-base sm:text-lg font-extrabold font-mono text-slate-900 mt-1">₹ 0</div>
+            <div id="kpiPeakMonth" class="text-[11px] text-slate-500 font-medium mt-0.5">--</div>
+          </div>
+          <div class="border-l border-slate-200 pl-3">
+            <span class="text-[10px] font-bold uppercase tracking-wider text-rose-600 flex items-center gap-1">
+              <i data-lucide="trending-down" class="w-3.5 h-3.5"></i> Lowest Month ABB
+            </span>
+            <div id="kpiLowABB" class="text-base sm:text-lg font-extrabold font-mono text-slate-900 mt-1">₹ 0</div>
+            <div id="kpiLowMonth" class="text-[11px] text-slate-500 font-medium mt-0.5">--</div>
+          </div>
+        </div>
+        <div class="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs">
+          <span class="text-slate-500">Min Single EOD Point:</span>
+          <span id="kpiLowestSinglePoint" class="font-mono font-semibold text-slate-800">₹ 0</span>
+        </div>
+      </div>
+
+      <!-- Card 4: Maximum Loan Eligibility Quick View -->
+      <div class="bg-gradient-to-br from-emerald-600 to-teal-700 text-white rounded-2xl p-5 shadow-md flex flex-col justify-between print-shadow-none">
+        <div class="flex items-start justify-between">
+          <div>
+            <span class="text-[11px] font-bold uppercase tracking-wider text-emerald-100">Est. Max Loan Eligibility</span>
+            <div id="kpiMaxLoanTop" class="text-2xl sm:text-3xl font-extrabold font-mono tracking-tight mt-1 text-white">₹ 0</div>
+          </div>
+          <div class="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center no-print">
+            <i data-lucide="badge-indian-rupee" class="w-5 h-5 text-white"></i>
+          </div>
+        </div>
+        <div class="mt-3 pt-3 border-t border-white/15 flex items-center justify-between text-xs">
+          <span>Max Eligible EMI: <strong id="kpiEligibleEMITop" class="font-mono text-emerald-100">₹ 0/mo</strong></span>
+          <span id="kpiLoanLakhsTop" class="font-bold bg-white/20 px-2 py-0.5 rounded text-white">0.00 L</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. 3-Tab Navigation Bar (Hidden in Print) -->
+    <div class="border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 no-print">
+      <div class="flex flex-wrap items-center gap-2">
+        <button id="tabBtn_WORKSHEET" onclick="switchMainTab('WORKSHEET')" class="px-4 py-2.5 rounded-t-xl text-xs sm:text-sm font-bold border-b-2 border-indigo-600 text-indigo-700 bg-white flex items-center gap-2 cursor-pointer transition">
+          <i data-lucide="table-2" class="w-4 h-4"></i>
+          <span>1. 12-Month ABB Worksheet (5th, 15th & 25th)</span>
+        </button>
+        <button id="tabBtn_TRANSACTIONS" onclick="switchMainTab('TRANSACTIONS')" class="px-4 py-2.5 rounded-t-xl text-xs sm:text-sm font-semibold border-b-2 border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-100 flex items-center gap-2 cursor-pointer transition">
+          <i data-lucide="search-check" class="w-4 h-4 text-emerald-600"></i>
+          <span>2. Extracted Raw Transactions Inspector</span>
+          <span id="tabTxCountPill" class="px-2 py-0.5 rounded-full text-[11px] font-mono bg-slate-200 text-slate-800">0</span>
+        </button>
+        <button id="tabBtn_DEBUGGER" onclick="switchMainTab('DEBUGGER')" class="px-4 py-2.5 rounded-t-xl text-xs sm:text-sm font-semibold border-b-2 border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-100 flex items-center gap-2 cursor-pointer transition">
+          <i data-lucide="terminal" class="w-4 h-4 text-amber-600"></i>
+          <span>3. Raw PDF Text Debugger</span>
+          <span id="tabPagesCountPill" class="px-2 py-0.5 rounded-full text-[11px] font-mono bg-slate-200 text-slate-800">0 Pgs</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- 5. Main 2-Column Layout: Left 8 Cols (Active Tab Content) + Right 4 Cols (Loan Eligibility Simulator) -->
+    <div class="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+
+      <!-- Left 8 Cols -->
+      <div class="xl:col-span-8 space-y-5 print-full-width">
+
+        <!-- TAB PANEL 1: 12-MONTH ABB WORKSHEET -->
+        <div id="tabPanel_WORKSHEET" class="space-y-5">
+          <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden print-shadow-none">
+
+            <!-- Table Header Controls -->
+            <div class="p-4 sm:p-5 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div class="flex items-center gap-2">
+                  <h2 class="text-base font-bold text-slate-900">Monthly ABB Computation Schedule (5th, 15th & 25th EOD)</h2>
+                  <span id="capRuleActiveBadge" class="hidden text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
+                    2x Spike Cap Applied
+                  </span>
+                </div>
+                <p class="text-xs text-slate-500 mt-0.5">
+                  Formula: <code class="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-700">Monthly ABB = (5th Bal + 15th Bal + 25th Bal) ÷ 3</code> • Hover or click any source badge to inspect the exact PDF transaction.
+                </p>
+              </div>
+
+              <!-- Action Controls (Hidden in Print) -->
+              <div class="flex flex-wrap items-center gap-2 no-print">
+                <label class="inline-flex items-center gap-1.5 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200/70 px-2.5 py-1.5 rounded-lg cursor-pointer transition" title="Indian NBFC underwriting norm: Caps any abnormal single-month ABB spike at 2x the average of remaining months">
+                  <input id="toggleSpikeCap" type="checkbox" onchange="recalculateAll()" class="rounded text-indigo-600 focus:ring-indigo-500" />
+                  <span>2x Spike Cap</span>
+                </label>
+
+                <button onclick="openTemplateGeneratorModal()" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 transition cursor-pointer">
+                  <i data-lucide="calendar-range" class="w-3.5 h-3.5"></i>
+                  <span>Manual 12M Grid</span>
+                </button>
+
+                <button onclick="addNewMonthRow()" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition cursor-pointer">
+                  <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                  <span>Add Month</span>
+                </button>
+
+                <button onclick="clearAllWorkspaceData()" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 transition cursor-pointer">
+                  <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+                  <span>Reset All</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Legend for EOD Carry-Forward Badges -->
+            <div class="bg-slate-50 px-4 py-2 border-b border-slate-200/80 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-600 no-print">
+              <div class="flex flex-wrap items-center gap-3">
+                <span class="font-semibold text-slate-700">EOD Source Badges (Click badge to jump to PDF transaction):</span>
+                <span class="inline-flex items-center gap-1">
+                  <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                  <span><strong>Exact:</strong> Txn on 5th/15th/25th</span>
+                </span>
+                <span class="inline-flex items-center gap-1">
+                  <span class="w-2 h-2 rounded-full bg-blue-500"></span>
+                  <span><strong>Fwd:</strong> Carried from prior EOD date</span>
+                </span>
+                <span class="inline-flex items-center gap-1">
+                  <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+                  <span><strong>Manual:</strong> Consultant override</span>
+                </span>
+              </div>
+              <div id="underwritingAlertChip" class="hidden items-center gap-1 text-rose-700 font-semibold bg-rose-100 px-2 py-0.5 rounded">
+                <i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i>
+                <span id="underwritingAlertText">Low balance alert</span>
+              </div>
+            </div>
+
+            <!-- Responsive Worksheet Table -->
+            <div class="overflow-x-auto">
+              <table class="w-full text-left border-collapse">
+                <thead>
+                  <tr class="bg-slate-100/80 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-600">
+                    <th class="py-3 pl-3 pr-1 w-10 text-center" title="Include/Exclude partial month from ABB calculation">Inc</th>
+                    <th class="py-3 px-2 min-w-[125px]">Month & Year</th>
+                    <th class="py-3 px-2 min-w-[165px] text-right">5th Closing Bal (₹)</th>
+                    <th class="py-3 px-2 min-w-[165px] text-right">15th Closing Bal (₹)</th>
+                    <th class="py-3 px-2 min-w-[165px] text-right">25th Closing Bal (₹)</th>
+                    <th class="py-3 px-3 min-w-[130px] text-right bg-slate-100">Monthly Sum (₹)</th>
+                    <th class="py-3 px-3 min-w-[145px] text-right bg-indigo-50/70 text-indigo-950">Monthly ABB (₹)</th>
+                    <th class="py-3 pl-1 pr-3 w-10 text-center no-print">Del</th>
+                  </tr>
+                </thead>
+                <tbody id="abbTableBody" class="divide-y divide-slate-200/80 text-sm">
+                  <!-- Populated dynamically via JS -->
+                </tbody>
+                <tfoot class="bg-slate-900 text-white font-mono text-xs sm:text-sm">
+                  <tr>
+                    <td colspan="2" class="py-3.5 pl-4 pr-2 font-sans font-bold uppercase tracking-wider text-indigo-300">
+                      Aggregate Total (Included Mos)
+                    </td>
+                    <td id="footSum5" class="py-3.5 px-2 text-right font-semibold text-slate-200">₹ 0</td>
+                    <td id="footSum15" class="py-3.5 px-2 text-right font-semibold text-slate-200">₹ 0</td>
+                    <td id="footSum25" class="py-3.5 px-2 text-right font-semibold text-slate-200">₹ 0</td>
+                    <td id="footGrandTotalSum" class="py-3.5 px-3 text-right font-bold text-white bg-slate-800">₹ 0</td>
+                    <td id="footSumOfMonthlyABBs" class="py-3.5 px-3 text-right font-bold text-indigo-200 bg-indigo-950">₹ 0</td>
+                    <td class="no-print"></td>
+                  </tr>
+                  <tr class="border-t border-slate-700 bg-indigo-950/90">
+                    <td colspan="2" class="py-3.5 pl-4 pr-2 font-sans font-extrabold uppercase tracking-wider text-emerald-300">
+                      Average Bank Balance (ABB)
+                    </td>
+                    <td id="footAvg5" class="py-3.5 px-2 text-right font-semibold text-indigo-200">₹ 0</td>
+                    <td id="footAvg15" class="py-3.5 px-2 text-right font-semibold text-indigo-200">₹ 0</td>
+                    <td id="footAvg25" class="py-3.5 px-2 text-right font-semibold text-indigo-200">₹ 0</td>
+                    <td id="footAvgMonthlySum" class="py-3.5 px-3 text-right font-semibold text-slate-300 bg-slate-800/70">₹ 0</td>
+                    <td id="footFinalABB" class="py-3.5 px-3 text-right text-base font-extrabold text-emerald-300 bg-indigo-900/80">₹ 0.00</td>
+                    <td class="no-print"></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+
+          <!-- Monthly ABB Visual Trend Bar Chart -->
+          <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-5 print-break-inside-avoid print-shadow-none">
+            <div class="flex items-center justify-between mb-4">
+              <div>
+                <h3 class="text-sm font-bold text-slate-900">Monthly ABB Cashflow Stability Chart</h3>
+                <p class="text-xs text-slate-500">Visual comparison of included monthly average balances</p>
+              </div>
+              <div class="flex items-center gap-4 text-xs">
+                <span class="inline-flex items-center gap-1.5 text-slate-600">
+                  <span class="w-3 h-3 rounded bg-indigo-600 inline-block"></span> Monthly ABB
+                </span>
+                <span class="inline-flex items-center gap-1.5 text-slate-600">
+                  <span class="w-3 h-3 rounded bg-emerald-500 inline-block"></span> Peak Month
+                </span>
+              </div>
+            </div>
+            <div id="abbVisualChart" class="h-44 flex items-end gap-2 sm:gap-3 pt-6 pb-2 px-2 border-b border-slate-200 relative">
+              <!-- Bars rendered dynamically -->
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB PANEL 2: EXTRACTED RAW TRANSACTIONS INSPECTOR -->
+        <div id="tabPanel_TRANSACTIONS" class="hidden space-y-4 no-print">
+          <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden">
+            <div class="p-4 sm:p-5 bg-slate-900 text-white flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 class="text-base font-bold flex items-center gap-2">
+                  <i data-lucide="search-check" class="w-5 h-5 text-emerald-400"></i>
+                  <span>Extracted Raw Transactions & Closing Balance Verification Ledger</span>
+                </h2>
+                <p class="text-xs text-slate-400 mt-0.5">
+                  Every transaction row extracted from your uploaded PDF(s) is shown below. Click any amount chip in <strong>"All Amounts Found"</strong> to override that row's Closing Balance.
+                </p>
+              </div>
+              <button onclick="switchMainTab('WORKSHEET')" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 cursor-pointer">
+                ← Back to 12M ABB Table
+              </button>
+            </div>
+
+            <!-- Filter & Manual Add Bar -->
+            <div class="p-3.5 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+              <div class="flex flex-wrap items-center gap-2">
+                <div class="relative">
+                  <input id="txSearchInput" type="text" oninput="renderTransactionsInspectorTable()" placeholder="Search date (2025-04) or narration..." class="pl-3 pr-8 py-1.5 rounded-lg border border-slate-300 text-xs w-60 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                  <button onclick="document.getElementById('txSearchInput').value=''; renderTransactionsInspectorTable();" class="absolute right-2 top-1.5 text-slate-400 hover:text-slate-600 text-xs">✕</button>
+                </div>
+                <select id="txFilterRoleSelect" onchange="renderTransactionsInspectorTable()" class="px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold bg-white">
+                  <option value="ALL">Show All Extracted Transactions</option>
+                  <option value="EOD">Show Daily EOD Closing Rows Only (1 per date)</option>
+                  <option value="ABB_USED">Show Only Rows Used for 5th, 15th & 25th ABB</option>
+                </select>
+              </div>
+
+              <!-- Add Custom Date EOD Override -->
+              <div class="flex flex-wrap items-center gap-1.5">
+                <input id="manualTxDate" type="date" class="px-2 py-1.5 rounded-lg border border-slate-300 text-xs font-mono bg-white" />
+                <input id="manualTxBalance" type="number" step="0.01" placeholder="Closing Bal (₹)" class="px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs font-mono w-32 bg-white" />
+                <input id="manualTxNarration" type="text" placeholder="Note / Narration" class="px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs w-32 bg-white" />
+                <button onclick="addManualTransactionRow()" class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold cursor-pointer">
+                  + Add Date Bal
+                </button>
+              </div>
+            </div>
+
+            <div class="overflow-x-auto max-h-[640px] overflow-y-auto">
+              <table class="w-full text-left border-collapse text-xs">
+                <thead class="sticky top-0 bg-slate-100 text-slate-600 uppercase font-bold border-b border-slate-200 z-10">
+                  <tr>
+                    <th class="py-2.5 px-3 w-12">#</th>
+                    <th class="py-2.5 px-2 w-16">Page</th>
+                    <th class="py-2.5 px-3 w-28">Date</th>
+                    <th class="py-2.5 px-3">Narration / Reconstructed Block Text</th>
+                    <th class="py-2.5 px-3 min-w-[180px]">All Amounts Found (Click to Select)</th>
+                    <th class="py-2.5 px-3 text-right w-36">Selected Closing Bal</th>
+                    <th class="py-2.5 px-3 text-center w-36">Used For ABB?</th>
+                  </tr>
+                </thead>
+                <tbody id="txInspectorTableBody" class="divide-y divide-slate-200 font-mono">
+                  <!-- Populated dynamically -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB PANEL 3: RAW PDF TEXT DEBUGGER -->
+        <div id="tabPanel_DEBUGGER" class="hidden space-y-4 no-print">
+          <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden">
+            <div class="p-4 sm:p-5 bg-slate-900 text-white flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 class="text-base font-bold flex items-center gap-2">
+                  <i data-lucide="terminal" class="w-5 h-5 text-amber-400"></i>
+                  <span>Raw PDF Page-by-Page Reconstructed Text Debugger</span>
+                </h2>
+                <p class="text-xs text-slate-400 mt-0.5">
+                  Shows the exact spatial lines reconstructed from your PDF (<code class="text-amber-300">|</code> indicates column gaps &gt; 12px). Green lines indicate detected transaction date rows.
+                </p>
+              </div>
+              <div class="flex items-center gap-2">
+                <button onclick="runTesseractOcrOnLoadedFiles()" class="px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-xs font-semibold text-white cursor-pointer">
+                  Run Tesseract OCR on Pages
+                </button>
+              </div>
+            </div>
+
+            <div id="rawPdfDebuggerContainer" class="p-4 space-y-4 max-h-[640px] overflow-y-auto bg-slate-950 text-slate-200 font-mono text-xs">
+              <div class="text-slate-400 py-8 text-center">No PDF uploaded yet. Upload a PDF above to inspect raw reconstructed lines per page.</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Right 4 Cols: Loan Eligibility & Underwriting Simulator -->
+      <div class="xl:col-span-4 space-y-5 print-full-width print-break-inside-avoid">
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden sticky top-20 print-shadow-none">
+          <div class="bg-slate-900 text-white p-4 sm:p-5">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <i data-lucide="calculator" class="w-5 h-5 text-emerald-400"></i>
+                <h2 class="text-base font-bold">Loan Eligibility Simulator</h2>
+              </div>
+              <span class="text-[11px] font-semibold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+                Banking Surrogate
+              </span>
+            </div>
+            <p class="text-xs text-slate-400 mt-1">
+              Calculate maximum permissible EMI and sanctionable loan amount based on verified ABB.
+            </p>
+          </div>
+
+          <div class="p-4 sm:p-5 space-y-5">
+            <!-- Base ABB Selection -->
+            <div>
+              <label class="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                Underwriting ABB Base Policy
+              </label>
+              <select id="abbPolicySelect" onchange="recalculateAll()" class="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-semibold text-slate-800 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                <option value="12M">Overall Average Bank Balance (All Included Mos)</option>
+                <option value="6M">Last 6-Month ABB (Recent Performance)</option>
+                <option value="LOWER">Lower of Overall or Last 6-Month ABB (Conservative)</option>
+              </select>
+              <div class="mt-1.5 flex items-center justify-between text-xs text-slate-500">
+                <span>Selected ABB Base:</span>
+                <strong id="selectedABBBaseDisplay" class="font-mono text-indigo-700">₹ 0.00</strong>
+              </div>
+            </div>
+
+            <!-- Control 1: Max EMI as % of ABB -->
+            <div class="space-y-1.5">
+              <div class="flex justify-between items-center">
+                <label for="emiRatioInput" class="text-xs font-semibold text-slate-700">
+                  Max Permissible EMI (% of ABB)
+                </label>
+                <div class="flex items-center gap-1">
+                  <input id="emiRatioInput" type="number" min="10" max="100" step="5" value="60" oninput="syncSlider('emiRatio', this.value)" class="w-16 px-2 py-1 text-right font-mono text-xs font-bold border border-slate-300 rounded bg-indigo-50 text-indigo-900" />
+                  <span class="text-xs font-bold text-slate-600">%</span>
+                </div>
+              </div>
+              <input id="emiRatioSlider" type="range" min="15" max="90" step="5" value="60" oninput="syncSlider('emiRatio', this.value)" class="w-full accent-indigo-600 cursor-pointer no-print" />
+              <div class="flex justify-between text-[10px] text-slate-400 no-print">
+                <span>25% (Conservative)</span>
+                <span>50-65% (Standard NBFC)</span>
+                <span>80% (Aggressive)</span>
+              </div>
+            </div>
+
+            <!-- Control 2: Existing Monthly EMIs / Obligations -->
+            <div class="space-y-1.5">
+              <div class="flex justify-between items-center">
+                <label for="existingEmiInput" class="text-xs font-semibold text-slate-700">
+                  Existing Monthly EMIs (Obligations)
+                </label>
+                <span id="existingEmiFormatted" class="text-[11px] font-mono text-slate-500">₹ 0</span>
+              </div>
+              <div class="relative">
+                <span class="absolute left-3 top-2 text-xs font-bold text-slate-400">₹</span>
+                <input id="existingEmiInput" type="number" min="0" step="1000" value="0" oninput="recalculateAll()" class="w-full pl-7 pr-3 py-2 rounded-lg border border-slate-300 text-sm font-mono font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              </div>
+              <p class="text-[11px] text-slate-400">Deducted from Gross ABB Capacity</p>
+            </div>
+
+            <!-- Control 3: Interest Rate & Loan Tenure -->
+            <div class="grid grid-cols-2 gap-3 pt-1">
+              <div>
+                <label for="interestRateInput" class="block text-xs font-semibold text-slate-700 mb-1">
+                  ROI (% p.a.)
+                </label>
+                <div class="relative">
+                  <input id="interestRateInput" type="number" min="5" max="36" step="0.25" value="16.0" oninput="recalculateAll()" class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm font-mono font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                  <span class="absolute right-3 top-2 text-xs font-bold text-slate-400">%</span>
+                </div>
+              </div>
+
+              <div>
+                <label for="loanTenureInput" class="block text-xs font-semibold text-slate-700 mb-1">
+                  Tenure (Months)
+                </label>
+                <div class="relative">
+                  <input id="loanTenureInput" type="number" min="6" max="240" step="6" value="36" oninput="recalculateAll()" class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm font-mono font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                  <span class="absolute right-2.5 top-2 text-[11px] font-semibold text-slate-400">Mos</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Quick Tenure Pills -->
+            <div class="flex items-center justify-between gap-1.5 no-print">
+              <span class="text-[11px] text-slate-500 font-medium">Quick Tenure:</span>
+              <div class="flex gap-1">
+                <button type="button" onclick="setTenure(24)" class="px-2 py-1 rounded text-[11px] font-semibold bg-slate-100 hover:bg-indigo-100 text-slate-700 hover:text-indigo-700 transition cursor-pointer">24M</button>
+                <button type="button" onclick="setTenure(36)" class="px-2 py-1 rounded text-[11px] font-semibold bg-slate-100 hover:bg-indigo-100 text-slate-700 hover:text-indigo-700 transition cursor-pointer">36M</button>
+                <button type="button" onclick="setTenure(48)" class="px-2 py-1 rounded text-[11px] font-semibold bg-slate-100 hover:bg-indigo-100 text-slate-700 hover:text-indigo-700 transition cursor-pointer">48M</button>
+                <button type="button" onclick="setTenure(60)" class="px-2 py-1 rounded text-[11px] font-semibold bg-slate-100 hover:bg-indigo-100 text-slate-700 hover:text-indigo-700 transition cursor-pointer">60M</button>
+                <button type="button" onclick="setTenure(120)" class="px-2 py-1 rounded text-[11px] font-semibold bg-slate-100 hover:bg-indigo-100 text-slate-700 hover:text-indigo-700 transition cursor-pointer">120M</button>
+              </div>
+            </div>
+
+            <!-- Computation Breakdown Box -->
+            <div class="bg-slate-50 rounded-xl p-4 border border-slate-200 space-y-2.5 text-xs">
+              <div class="flex justify-between items-center text-slate-600">
+                <span>Gross EMI Capacity (<span id="lblGrossPct">60</span>% of ABB):</span>
+                <span id="valGrossEmiCapacity" class="font-mono font-semibold text-slate-900">₹ 0</span>
+              </div>
+              <div class="flex justify-between items-center text-slate-600">
+                <span>Less: Existing Monthly Obligations:</span>
+                <span id="valLessObligations" class="font-mono font-semibold text-rose-600">- ₹ 0</span>
+              </div>
+              <div class="pt-2 border-t border-slate-200 flex justify-between items-center">
+                <span class="font-bold text-slate-800">Net Eligible Monthly EMI:</span>
+                <span id="valNetEligibleEmi" class="font-mono text-sm font-extrabold text-indigo-700">₹ 0</span>
+              </div>
+            </div>
+
+            <!-- Final Sanction Eligibility Highlight Card -->
+            <div class="bg-gradient-to-br from-indigo-600 to-indigo-800 text-white rounded-xl p-4 shadow-md">
+              <div class="flex items-center justify-between text-xs text-indigo-200">
+                <span class="font-semibold uppercase tracking-wider">Max Eligible Loan Amount</span>
+                <span id="valLoanPerLakhEmi" class="font-mono text-[11px]">EMI/Lakh: ₹ 0</span>
+              </div>
+              <div id="valFinalEligibleLoan" class="text-2xl sm:text-3xl font-extrabold font-mono mt-1">
+                ₹ 0
+              </div>
+              <div class="mt-2 flex items-center justify-between text-xs text-indigo-100 pt-2 border-t border-white/15">
+                <span id="valFinalLoanInWords" class="font-semibold text-emerald-300">₹ 0.00 Lakhs</span>
+                <span>DSCR / FOIR Checked</span>
+              </div>
+            </div>
+
+            <!-- Alternative NBFC Direct ABB Multiplier Matrix -->
+            <div class="border-t border-slate-200 pt-4">
+              <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2.5 flex items-center justify-between">
+                <span>Quick NBFC Multiplier Matrix</span>
+                <span class="text-[10px] font-normal text-slate-400">Direct Multiple of ABB</span>
+              </h4>
+              <div class="grid grid-cols-3 gap-2 text-center">
+                <div class="bg-slate-50 border border-slate-200 rounded-lg p-2">
+                  <div class="text-[10px] font-bold text-slate-500">2.0x ABB</div>
+                  <div id="mult2x" class="text-xs font-mono font-bold text-slate-800 mt-0.5">₹ 0L</div>
+                </div>
+                <div class="bg-indigo-50/60 border border-indigo-200 rounded-lg p-2">
+                  <div class="text-[10px] font-bold text-indigo-600">3.0x ABB</div>
+                  <div id="mult3x" class="text-xs font-mono font-bold text-indigo-900 mt-0.5">₹ 0L</div>
+                </div>
+                <div class="bg-emerald-50/60 border border-emerald-200 rounded-lg p-2">
+                  <div class="text-[10px] font-bold text-emerald-700">4.0x ABB</div>
+                  <div id="mult4x" class="text-xs font-mono font-bold text-emerald-900 mt-0.5">₹ 0L</div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- MODAL 1: Password-Protected PDF Unlock Prompt -->
+  <div id="passwordModal" class="fixed inset-0 z-50 hidden bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 no-print">
+    <div class="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-md w-full p-5 space-y-4">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+          <i data-lucide="lock" class="w-5 h-5 text-amber-600"></i>
+          <span>Unlock Password-Protected PDF</span>
+        </h3>
+        <button onclick="cancelPasswordModal()" class="text-slate-400 hover:text-slate-600">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+      <p class="text-xs text-slate-600">
+        The file <strong id="lockedFileNameLabel" class="text-slate-900 font-mono">statement.pdf</strong> is password-protected. Enter the client's PDF password below to extract transactions:
+      </p>
+      <input id="modalPasswordInput" type="password" placeholder="Enter PDF password..." onkeydown="if(event.key==='Enter') submitPasswordModal()" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+      <div class="flex justify-end gap-2">
+        <button onclick="cancelPasswordModal()" class="px-4 py-2 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer">Skip File</button>
+        <button onclick="submitPasswordModal()" class="px-4 py-2 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer">Unlock & Parse PDF</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 2: 12-Month Period Template Generator -->
+  <div id="templateModal" class="fixed inset-0 z-50 hidden bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 no-print">
+    <div class="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-md w-full p-5 space-y-4">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+          <i data-lucide="calendar" class="w-5 h-5 text-indigo-600"></i>
+          <span>Generate Custom Month Schedule</span>
+        </h3>
+        <button onclick="closeTemplateGeneratorModal()" class="text-slate-400 hover:text-slate-600">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+      <p class="text-xs text-slate-600">
+        Create a 6-month or 12-month grid for manual entry or re-mapping against extracted EOD dates.
+      </p>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Start Month</label>
+          <select id="tplStartMonth" class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm font-semibold">
+            <option value="0">January</option>
+            <option value="1">February</option>
+            <option value="2">March</option>
+            <option value="3" selected>April (FY Start)</option>
+            <option value="4">May</option>
+            <option value="5">June</option>
+            <option value="6">July</option>
+            <option value="7">August</option>
+            <option value="8">September</option>
+            <option value="9">October</option>
+            <option value="10">November</option>
+            <option value="11">December</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Start Year</label>
+          <input id="tplStartYear" type="number" value="2025" min="2015" max="2035" class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm font-mono font-semibold" />
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-700 mb-1">Number of Months</label>
+        <select id="tplMonthCount" class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm font-semibold">
+          <option value="6">6 Months</option>
+          <option value="12" selected>12 Months (Standard)</option>
+          <option value="15">15 Months</option>
+        </select>
+      </div>
+      <div class="flex justify-end gap-2 pt-2">
+        <button onclick="closeTemplateGeneratorModal()" class="px-4 py-2 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer">Cancel</button>
+        <button onclick="generateSequentialMonths()" class="px-4 py-2 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer">Generate Schedule</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 3: Bulk Excel / Clipboard Paste Modal -->
+  <div id="bulkPasteModal" class="fixed inset-0 z-50 hidden bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 no-print">
+    <div class="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-xl w-full p-5 space-y-4">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+          <i data-lucide="clipboard-paste" class="w-5 h-5 text-indigo-600"></i>
+          <span>Fast Paste 5th, 15th & 25th Balances from Excel</span>
+        </h3>
+        <button onclick="closeBulkPasteModal()" class="text-slate-400 hover:text-slate-600">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+      <p class="text-xs text-slate-600">
+        Paste rows copied from Excel or CSV. Each line can have <strong>3 numbers</strong> (<code class="font-mono">5th, 15th, 25th</code>) or <strong>Month + 3 numbers</strong> (<code class="font-mono">Apr 2025, 450000, 520000, 480000</code>).
+      </p>
+      <textarea id="bulkPasteTextarea" rows="8" placeholder="Apr 2025	4,25,000	5,10,000	4,85,000&#10;May 2025	4,90,000	5,45,000	5,12,000&#10;Jun 2025	5,30,000	4,75,000	6,10,000" class="w-full p-3 rounded-xl border border-slate-300 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"></textarea>
+      <div class="flex justify-end gap-2">
+        <button onclick="closeBulkPasteModal()" class="px-4 py-2 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer">Cancel</button>
+        <button onclick="processBulkPaste()" class="px-4 py-2 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer">Apply Pasted Data</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ============================================================================
+    // 1. BULLETPROOF PDF.JS SETUP FOR BOTH file:/// AND http(s)://
+    // ============================================================================
+    const PDFJS_MAIN_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    const PDFJS_WORKER_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    const PDFJS_FALLBACK_MAIN_CDN = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js';
+    const PDFJS_FALLBACK_WORKER_CDN = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+
+    if (window.pdfjsLib) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_CDN;
+    }
+
+    function injectExternalScript(url) {
+      return new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = url;
+        s.async = true;
+        s.onload = () => resolve();
+        s.onerror = () => reject(new Error(`Failed to load script: ${url}`));
+        document.head.appendChild(s);
+      });
+    }
+
+    /**
+     * Guarantees both `window.pdfjsLib` and `window.pdfjsWorker.WorkerMessageHandler`
+     * are loaded on `window` so `disableWorker: true` runs in-process without ever
+     * throwing "Cannot read properties of undefined (reading 'WorkerMessageHandler')" on `file:///`.
+     */
+    async function ensurePdfJsReady() {
+      if (!window.pdfjsLib) {
+        try {
+          await injectExternalScript(PDFJS_MAIN_CDN);
+        } catch (e) {
+          await injectExternalScript(PDFJS_FALLBACK_MAIN_CDN);
+        }
+      }
+      if (!window.pdfjsWorker || !window.pdfjsWorker.WorkerMessageHandler) {
+        try {
+          await injectExternalScript(PDFJS_WORKER_CDN);
+        } catch (e) {
+          await injectExternalScript(PDFJS_FALLBACK_WORKER_CDN);
+        }
+      }
+      if (window.pdfjsLib) {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_CDN;
+      }
+    }
+
+    /**
+     * Loads a PDF document from an ArrayBuffer using in-process `window.pdfjsWorker.WorkerMessageHandler`
+     * (`disableWorker: true`). Works 100% reliably on `file:///C:/...` in Brave, Chrome, and Edge.
+     */
+    async function loadPdfDocumentWithFallback(arrayBuffer, password) {
+      await ensurePdfJsReady();
+      const uint8Copy = new Uint8Array(arrayBuffer.slice(0));
+      const loadingTask = pdfjsLib.getDocument({
+        data: uint8Copy,
+        password: password || undefined,
+        disableWorker: true,
+        isEvalSupported: false
+      });
+      return await loadingTask.promise;
+    }
+
+    // ============================================================================
+    // 2. APPLICATION STATE
+    // ============================================================================
+    // Raw Transaction Blocks parsed from PDF(s):
+    // Each item: {
+    //   id, seq, pageNum, sourceFile, isoDate, displayDate, narration,
+    //   candidates: [{ absValue, signedValue, isDr, rawText, x, xRight, lineOffset }],
+    //   learnedBalanceColX, selectedCandidateIndex, selectedBalance
+    // }
+    let parsedTransactionBlocks = [];
+
+    // Reconstructed raw page debug logs: [{ fileName, pageNum, charCount, lines: [{ text, isDateLine, isHeaderLine }] }]
+    let rawPageDebugLogs = [];
+
+    // Daily EOD Closing Balance Map: "YYYY-MM-DD" -> { dateStr, balance, narration, sourceFile, pageNum, blockId }
+    let extractedDailyEODMap = new Map();
+
+    // Map of blockId -> array of ABB target labels where this transaction was used (e.g. ["Apr 2025 (5th)", "Apr 2025 (15th)"])
+    let blockUsageMap = new Map();
+
+    let openingBalanceFallback = null;
+    let lastUploadedFilesCache = [];
+    let detectedStatementOrder = 'ASC (Oldest → Newest)';
+    let detectedBankGlobal = '';
+
+    // 12-Month ABB Schedule Rows:
+    // Each row: { id, included, year, month (0-11), label, bal5, bal15, bal25, meta5, meta15, meta25 }
+    let abbScheduleRows = [];
+
+    const MONTH_NAMES_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+    const inrFormatter = new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+
+    const inrWholeFormatter = new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    });
+
+    function formatINR(val, decimals = 2) {
+      const num = Number(val) || 0;
+      return decimals === 0 ? inrWholeFormatter.format(num) : inrFormatter.format(num);
+    }
+
+    function formatLakhs(val) {
+      const num = Number(val) || 0;
+      const lakhs = num / 100000;
+      if (Math.abs(lakhs) >= 100) {
+        return `₹ ${(num / 10000000).toFixed(2)} Cr`;
+      }
+      return `₹ ${lakhs.toFixed(2)} Lakhs`;
+    }
+
+    function formatISODate(year, monthZeroIndexed, day) {
+      const y = String(year);
+      const m = String(monthZeroIndexed + 1).padStart(2, '0');
+      const d = String(day).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+
+    function formatShortHumanDate(isoDate) {
+      if (!isoDate) return '';
+      const parts = isoDate.split('-');
+      if (parts.length !== 3) return isoDate;
+      const day = parts[2];
+      const mIdx = parseInt(parts[1], 10) - 1;
+      return `${day} ${MONTH_NAMES_SHORT[mIdx] || ''}`;
+    }
+
+    // ============================================================================
+    // 3. TOAST & TAB NAVIGATION
+    // ============================================================================
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      const colorClasses = {
+        success: 'bg-emerald-900 border-emerald-500 text-white',
+        warning: 'bg-amber-900 border-amber-500 text-white',
+        error: 'bg-rose-900 border-rose-500 text-white',
+        info: 'bg-slate-900 border-indigo-500 text-white'
+      };
+      toast.className = `pointer-events-auto flex items-center justify-between gap-3 px-4 py-3 rounded-xl shadow-lg border-l-4 text-xs font-medium transition-all duration-300 ${colorClasses[type] || colorClasses.info}`;
+      toast.innerHTML = `
+        <span>${message}</span>
+        <button onclick="this.parentElement.remove()" class="text-slate-300 hover:text-white font-bold cursor-pointer">✕</button>
+      `;
+      container.appendChild(toast);
+      setTimeout(() => {
+        if (toast.parentElement) toast.remove();
+      }, 5500);
+    }
+
+    function switchMainTab(tabKey) {
+      const tabs = ['WORKSHEET', 'TRANSACTIONS', 'DEBUGGER'];
+      tabs.forEach(k => {
+        const panel = document.getElementById(`tabPanel_${k}`);
+        const btn = document.getElementById(`tabBtn_${k}`);
+        if (k === tabKey) {
+          panel.classList.remove('hidden');
+          btn.className = 'px-4 py-2.5 rounded-t-xl text-xs sm:text-sm font-bold border-b-2 border-indigo-600 text-indigo-700 bg-white flex items-center gap-2 cursor-pointer transition';
+        } else {
+          panel.classList.add('hidden');
+          btn.className = 'px-4 py-2.5 rounded-t-xl text-xs sm:text-sm font-semibold border-b-2 border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-100 flex items-center gap-2 cursor-pointer transition';
+        }
+      });
+
+      if (tabKey === 'TRANSACTIONS') {
+        renderTransactionsInspectorTable();
+      } else if (tabKey === 'DEBUGGER') {
+        renderRawPdfDebugger();
+      }
+    }
+
+    function togglePasswordVisibility() {
+      const input = document.getElementById('pdfPasswordInput');
+      const icon = document.getElementById('pwdEyeIcon');
+      if (input.type === 'password') {
+        input.type = 'text';
+        icon.setAttribute('data-lucide', 'eye-off');
+      } else {
+        input.type = 'password';
+        icon.setAttribute('data-lucide', 'eye');
+      }
+      lucide.createIcons();
+    }
+
+    // ============================================================================
+    // 4. PASSWORD PROMPT MODAL FOR LOCKED PDFS
+    // ============================================================================
+    let passwordModalResolve = null;
+
+    function promptUserForPdfPassword(fileName) {
+      return new Promise(resolve => {
+        passwordModalResolve = resolve;
+        document.getElementById('lockedFileNameLabel').textContent = fileName;
+        const input = document.getElementById('modalPasswordInput');
+        input.value = '';
+        document.getElementById('passwordModal').classList.remove('hidden');
+        setTimeout(() => input.focus(), 50);
+      });
+    }
+
+    function submitPasswordModal() {
+      const val = document.getElementById('modalPasswordInput').value;
+      document.getElementById('passwordModal').classList.add('hidden');
+      if (passwordModalResolve) {
+        passwordModalResolve(val);
+        passwordModalResolve = null;
+      }
+    }
+
+    function cancelPasswordModal() {
+      document.getElementById('passwordModal').classList.add('hidden');
+      if (passwordModalResolve) {
+        passwordModalResolve(null);
+        passwordModalResolve = null;
+      }
+    }
+
+    // ============================================================================
+    // 5. GAP-AWARE SPATIAL LINE RECONSTRUCTION & MULTI-LINE BLOCK PARSER
+    // ============================================================================
+    function setupDragAndDrop() {
+      const dropZone = document.getElementById('dropZone');
+      ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(evtName => {
+        dropZone.addEventListener(evtName, e => {
+          e.preventDefault();
+          e.stopPropagation();
+        });
+      });
+
+      ['dragenter', 'dragover'].forEach(evtName => {
+        dropZone.addEventListener(evtName, () => {
+          dropZone.classList.add('border-indigo-600', 'bg-indigo-100/60');
+        });
+      });
+
+      ['dragleave', 'drop'].forEach(evtName => {
+        dropZone.addEventListener(evtName, () => {
+          dropZone.classList.remove('border-indigo-600', 'bg-indigo-100/60');
+        });
+      });
+
+      dropZone.addEventListener('drop', e => {
+        const files = e.dataTransfer.files;
+        if (files && files.length > 0) {
+          processUploadedPDFs(Array.from(files));
+        }
+      });
+    }
+
+    function handleFileSelect(event) {
+      const files = event.target.files;
+      if (files && files.length > 0) {
+        processUploadedPDFs(Array.from(files));
+      }
+      event.target.value = '';
+    }
+
+    async function processUploadedPDFs(files) {
+      const pdfFiles = files.filter(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
+      if (pdfFiles.length === 0) {
+        showToast('Please select valid PDF bank statement files (.pdf).', 'error');
+        return;
+      }
+
+      lastUploadedFilesCache = pdfFiles;
+      document.getElementById('btnRunOcrTop').classList.remove('hidden');
+      document.getElementById('scannedPdfWarningBanner').classList.add('hidden');
+
+      // Reset current workspace so user immediately sees 100% real data from their uploaded PDF(s)
+      parsedTransactionBlocks = [];
+      rawPageDebugLogs = [];
+      extractedDailyEODMap.clear();
+      blockUsageMap.clear();
+      openingBalanceFallback = null;
+      abbScheduleRows = [];
+      detectedBankGlobal = '';
+      renderABBTable();
+      recalculateAll();
+
+      const statusList = document.getElementById('uploadedFilesList');
+      statusList.innerHTML = '';
+
+      let totalPagesScanned = 0;
+      let totalCharsExtracted = 0;
+      let globalSeq = 1;
+
+      for (const file of pdfFiles) {
+        // Also infer bank name from filename if obvious (e.g., IDFCFIRSTBankstatement_...)
+        if (!detectedBankGlobal) {
+          detectedBankGlobal = detectIndianBankAndAccountMeta(file.name);
+        }
+
+        const statusRow = document.createElement('div');
+        statusRow.className = 'text-xs flex items-center justify-between bg-white px-3 py-2 rounded-lg border border-slate-200';
+        statusRow.innerHTML = `
+          <span class="font-semibold text-slate-700 truncate max-w-[280px]">${file.name}</span>
+          <span class="text-indigo-600 font-semibold animate-pulse">Reading PDF & reconstructing columns...</span>
+        `;
+        statusList.appendChild(statusRow);
+
+        let password = document.getElementById('pdfPasswordInput').value.trim();
+        let pdfDoc = null;
+
+        while (!pdfDoc) {
+          try {
+            const arrayBuffer = await file.arrayBuffer();
+            pdfDoc = await loadPdfDocumentWithFallback(arrayBuffer, password);
+          } catch (err) {
+            const errMsg = String(err && err.message ? err.message : err);
+            if (err && (err.name === 'PasswordException' || errMsg.toLowerCase().includes('password'))) {
+              const userPwd = await promptUserForPdfPassword(file.name);
+              if (userPwd === null) {
+                statusRow.innerHTML = `
+                  <span class="font-semibold text-rose-700 truncate max-w-[260px]">✕ ${file.name}</span>
+                  <span class="text-rose-600 font-semibold">Skipped (Password Protected)</span>
+                `;
+                break;
+              }
+              password = userPwd;
+              document.getElementById('pdfPasswordInput').value = userPwd;
+            } else {
+              console.error('PDF load error:', err);
+              statusRow.innerHTML = `
+                <span class="font-semibold text-rose-700 truncate max-w-[260px]">✕ ${file.name}</span>
+                <span class="text-rose-600 font-semibold">Error loading PDF: ${errMsg || 'Corrupted or unsupported file'}</span>
+              `;
+              break;
+            }
+          }
+        }
+
+        if (!pdfDoc) continue;
+
+        totalPagesScanned += pdfDoc.numPages;
+        const fileRes = await parsePdfWithSpatialBlockEngine(pdfDoc, file.name, globalSeq);
+        globalSeq = fileRes.nextSeq;
+        totalCharsExtracted += fileRes.totalChars;
+
+        if (fileRes.detectedBank && !detectedBankGlobal) {
+          detectedBankGlobal = fileRes.detectedBank;
+        }
+
+        parsedTransactionBlocks.push(...fileRes.blocks);
+        rawPageDebugLogs.push(...fileRes.pageLogs);
+
+        statusRow.innerHTML = `
+          <span class="font-semibold text-slate-800 truncate max-w-[280px]">✓ ${file.name}</span>
+          <span class="text-emerald-700 font-semibold bg-emerald-50 px-2.5 py-0.5 rounded border border-emerald-200">
+            ${fileRes.blocks.length} transactions extracted (${pdfDoc.numPages} pgs)
+          </span>
+        `;
+      }
+
+      if (detectedBankGlobal) {
+        document.getElementById('bankName').value = detectedBankGlobal;
+      }
+
+      document.getElementById('tabPagesCountPill').textContent = `${totalPagesScanned} Pgs`;
+
+      // Check if scanned PDF (0 transactions or < 30 chars per page)
+      const avgCharsPerPage = totalPagesScanned > 0 ? (totalCharsExtracted / totalPagesScanned) : 0;
+      if (parsedTransactionBlocks.length === 0 && totalPagesScanned > 0) {
+        document.getElementById('scannedPdfWarningBanner').classList.remove('hidden');
+        if (avgCharsPerPage < 30) {
+          document.getElementById('scannedWarningTitle').textContent = `Scanned Image PDF Detected (Avg ${Math.round(avgCharsPerPage)} chars/page)`;
+          document.getElementById('scannedWarningDesc').textContent = 'This PDF has little or no selectable text layer. Click "Run OCR on Scanned PDF (Tesseract.js)" to scan the pages optically and extract all transactions.';
+        } else {
+          document.getElementById('scannedWarningTitle').textContent = '0 Transactions Matched in Standard Text Layer';
+          document.getElementById('scannedWarningDesc').textContent = 'Open Tab 3 (Raw PDF Text Debugger) below to see the exact text extracted from your PDF, or click "Run OCR on Scanned PDF" if the PDF uses custom glyph encoding.';
+        }
+      }
+
+      reEvaluateParsedBlocks();
+
+      if (parsedTransactionBlocks.length > 0) {
+        showToast(`Extracted ${parsedTransactionBlocks.length} real transactions across ${extractedDailyEODMap.size} unique dates!`, 'success');
+      } else if (totalPagesScanned > 0) {
+        showToast('0 transactions found in text layer. Check Tab 3 Debugger or run OCR.', 'warning');
+      }
+    }
+
+    /**
+     * Reconstructs visual lines with gap-aware horizontal spacing (`gap < 2.2` -> `""`, `2.2..12` -> `" "`, `> 12` -> `"  |  "`),
+     * stitches 2-line wrapped dates (common in IDFC FIRST Bank & ICICI narrow columns), and extracts Transaction Blocks.
+     */
+    async function parsePdfWithSpatialBlockEngine(pdfDoc, fileName, startSeq) {
+      const blocks = [];
+      const pageLogs = [];
+      let detectedBank = detectIndianBankAndAccountMeta(fileName);
+      let totalChars = 0;
+      let seq = startSeq;
+      let learnedBalanceColX = null;
+      let learnedDateColX = null;
+
+      for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
+        const page = await pdfDoc.getPage(pageNum);
+        const viewport = page.getViewport({ scale: 1.0 });
+        const pageWidth = viewport.width || 600;
+        const textContent = await page.getTextContent();
+
+        // 1. Collect raw text items with coordinates
+        const rawItems = [];
+        for (const item of textContent.items) {
+          const rawStr = item.str || '';
+          if (!rawStr.trim()) continue;
+          const x = item.transform[4];
+          const y = item.transform[5];
+          const w = item.width || (rawStr.length * 4.5);
+          rawItems.push({ str: rawStr.trim(), x, xRight: x + w, width: w, y });
+        }
+
+        // 2. Group items into visual horizontal lines (Y-tolerance <= 3.8px)
+        const visualLines = [];
+        for (const it of rawItems) {
+          let line = visualLines.find(l => Math.abs(l.y - it.y) <= 3.8);
+          if (!line) {
+            line = { y: it.y, items: [] };
+            visualLines.push(line);
+          }
+          line.items.push(it);
+        }
+
+        // Sort lines top-to-bottom (descending Y)
+        visualLines.sort((a, b) => b.y - a.y);
+
+        // 3. On each line, sort items left-to-right and build gap-aware strings & column chunks
+        for (const line of visualLines) {
+          rebuildVisualLineChunks(line);
+          totalChars += line.text.length;
+        }
+
+        // 4. Pre-pass: Stitch 2-Line Wrapped Dates (IDFC FIRST Bank & ICICI narrow Date columns)
+        // E.g. Line i left chunk is "05-Apr-" or "05 Apr" or "05/04/" and Line i+1 left chunk is "2025" or "2026"
+        stitchWrappedTwoLineDates(visualLines, pageWidth);
+
+        // 5. Parse page lines into Transaction Blocks & Page Debug Log
+        const parsedPage = parseVisualLinesIntoBlocks(
+          visualLines,
+          pageWidth,
+          pageNum,
+          fileName,
+          seq,
+          learnedBalanceColX,
+          learnedDateColX
+        );
+
+        seq = parsedPage.nextSeq;
+        if (parsedPage.detectedBank && !detectedBank) {
+          detectedBank = parsedPage.detectedBank;
+        }
+        if (parsedPage.learnedBalanceColX !== null) {
+          learnedBalanceColX = parsedPage.learnedBalanceColX;
+        }
+        if (parsedPage.learnedDateColX !== null) {
+          learnedDateColX = parsedPage.learnedDateColX;
+        }
+
+        blocks.push(...parsedPage.blocks);
+        pageLogs.push({
+          fileName,
+          pageNum,
+          charCount: visualLines.reduce((acc, l) => acc + l.text.length, 0),
+          lines: parsedPage.debugLines
+        });
+      }
+
+      return { blocks, pageLogs, detectedBank, totalChars, nextSeq: seq };
+    }
+
+    function rebuildVisualLineChunks(line) {
+      line.items.sort((a, b) => a.x - b.x);
+      let joinedLineStr = '';
+      const mergedChunks = [];
+
+      for (let i = 0; i < line.items.length; i++) {
+        const curr = line.items[i];
+        if (i === 0) {
+          joinedLineStr = curr.str;
+          mergedChunks.push({
+            str: curr.str,
+            x: curr.x,
+            xRight: curr.xRight
+          });
+        } else {
+          const prev = line.items[i - 1];
+          const gap = curr.x - prev.xRight;
+
+          if (gap < 2.2) {
+            joinedLineStr += curr.str;
+          } else if (gap <= 12) {
+            joinedLineStr += ' ' + curr.str;
+          } else {
+            joinedLineStr += '  |  ' + curr.str;
+          }
+
+          const lastChunk = mergedChunks[mergedChunks.length - 1];
+          if (gap < 2.2) {
+            lastChunk.str += curr.str;
+            lastChunk.xRight = Math.max(lastChunk.xRight, curr.xRight);
+          } else if (gap <= 8.5 && (/^(Cr\.?|Dr\.?|CR|DR)$/i.test(curr.str) || /[0-9,]$/.test(lastChunk.str))) {
+            lastChunk.str += ' ' + curr.str;
+            lastChunk.xRight = Math.max(lastChunk.xRight, curr.xRight);
+          } else {
+            mergedChunks.push({
+              str: curr.str,
+              x: curr.x,
+              xRight: curr.xRight
+            });
+          }
+        }
+      }
+
+      line.text = joinedLineStr;
+      line.chunks = mergedChunks;
+    }
+
+    /**
+     * Stitches 2-line wrapped dates in narrow left columns (IDFC FIRST Bank, ICICI, Kotak).
+     * Example: Line i starts with "05-Apr-" or "05 Apr" and Line i+1 starts with "2025" at X < 190px.
+     */
+    function stitchWrappedTwoLineDates(visualLines, pageWidth) {
+      const partialDatePrefixRegex = /^(?:0?[1-9]|[12][0-9]|3[01])[\s\-\/\.]+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|0?[1-9]|1[0-2])[a-z]*[\s\-\/\.,]*$/i;
+      const yearContinuationRegex = /^(20[123]\d|\d{2})(?:\b|\s|$)/;
+
+      for (let i = 0; i < visualLines.length - 1; i++) {
+        const currLine = visualLines[i];
+        const nextLine = visualLines[i + 1];
+        if (!currLine.chunks || !currLine.chunks.length || !nextLine.chunks || !nextLine.chunks.length) continue;
+
+        const yDiff = Math.abs((currLine.y || 0) - (nextLine.y || 0));
+        if (yDiff > 20) continue;
+
+        const firstChunk = currLine.chunks[0];
+        const nextFirstChunk = nextLine.chunks[0];
+        if (firstChunk.x > pageWidth * 0.32 || nextFirstChunk.x > pageWidth * 0.32) continue;
+
+        const cStr = firstChunk.str.trim();
+        const nStr = nextFirstChunk.str.trim();
+
+        if (partialDatePrefixRegex.test(cStr) && yearContinuationRegex.test(nStr)) {
+          const ym = nStr.match(yearContinuationRegex);
+          const yearToken = ym[1];
+          firstChunk.str = `${cStr} ${yearToken}`.replace(/\s+/g, ' ');
+          currLine.text = `${firstChunk.str}  |  ${currLine.text}`;
+        }
+      }
+    }
+
+    /**
+     * Universal line-to-block parser used by both the PDF.js Spatial Engine and the Tesseract.js OCR Engine.
+     * Implements:
+     * - Rule A (Same-Line Priority): If the Date line itself has monetary amounts on the right half (`x > pageWidth * 0.38`),
+     *   mark those candidates as `onDateLine: true` and prioritize them so numbers in narration lines or footers never overwrite them.
+     * - Rule B (Multi-Line Fallback): Only inspect up to 3 continuation lines (`deltaY <= 40px`) stopping immediately at any footer/summary/header.
+     */
+    function parseVisualLinesIntoBlocks(visualLines, pageWidth, pageNum, fileName, startSeq, learnedBalanceColX, learnedDateColX) {
+      let seq = startSeq;
+      let detectedBank = '';
+      const debugLines = [];
+      const rawBlocks = [];
+      let currentBlock = null;
+
+      for (const line of visualLines) {
+        const t = line.text;
+
+        if (!detectedBank) {
+          detectedBank = detectIndianBankAndAccountMeta(t);
+        }
+
+        // Check if this is a Table Header row (`Date`, `Narration`/`Particulars`, `Debit`/`Withdrawal`, `Credit`/`Deposit`, `Balance`)
+        const isHeaderRow = /\b(date|txn\s*date|tran\s*date|value\s*date|particulars|narration|description)\b/i.test(t) &&
+                            /\b(balance|closing\s*bal|running\s*bal|withdrawal|deposit|debit|credit)\b/i.test(t);
+
+        if (isHeaderRow) {
+          for (const ch of (line.chunks || [])) {
+            if (/\b(balance|closing)\b/i.test(ch.str) && ch.x > pageWidth * 0.38) {
+              learnedBalanceColX = ch.xRight;
+            }
+            if (/\b(date|txn\s*date|tran\s*date)\b/i.test(ch.str) && ch.x < pageWidth * 0.35) {
+              learnedDateColX = ch.x;
+            }
+          }
+          currentBlock = null;
+          debugLines.push({ text: t, isDateLine: false, isHeaderLine: true });
+          continue;
+        }
+
+        // Check for Opening Balance / Brought Forward
+        if (/\b(opening\s*balance|balance\s*brought\s*forward|b\/f|opening\s*bal)\b/i.test(t) && openingBalanceFallback === null) {
+          const cands = extractDecimalAmountsFromLine(line, 0, pageWidth);
+          if (cands.length > 0) {
+            openingBalanceFallback = cands[cands.length - 1].signedValue;
+          }
+        }
+
+        // Ignore non-transaction metadata / footer / summary lines and immediately close any open multi-line block
+        if (isNonTransactionMetadataLine(t)) {
+          currentBlock = null;
+          debugLines.push({ text: t, isDateLine: false, isHeaderLine: false });
+          continue;
+        }
+
+        // Check if this line starts with or contains a Transaction Date on the left side
+        const dateMatch = extractUniversalIndianDateFromLine(line, pageWidth);
+
+        if (dateMatch) {
+          currentBlock = {
+            isoDate: dateMatch.isoDate,
+            displayDate: dateMatch.matchedRaw,
+            lines: [line],
+            pageNum
+          };
+          rawBlocks.push(currentBlock);
+          debugLines.push({ text: t, isDateLine: true, isHeaderLine: false });
+        } else {
+          debugLines.push({ text: t, isDateLine: false, isHeaderLine: false });
+          // Multi-line transaction continuation: attach up to 3 subsequent non-date lines below the Date line
+          if (currentBlock && currentBlock.lines.length < 4) {
+            const prevLineY = currentBlock.lines[currentBlock.lines.length - 1].y;
+            const yDiff = prevLineY !== undefined && line.y !== undefined ? Math.abs(prevLineY - line.y) : 12;
+            if (yDiff <= 40) {
+              currentBlock.lines.push(line);
+            } else {
+              currentBlock = null;
+            }
+          }
+        }
+      }
+
+      // Extract monetary candidates across each Transaction Block with Same-Line Priority
+      const finalizedBlocks = [];
+      for (const b of rawBlocks) {
+        const dateLineCands = extractDecimalAmountsFromLine(b.lines[0], 0, pageWidth);
+        const rightSideDateLineCands = dateLineCands.filter(c => c.xRight >= pageWidth * 0.38);
+
+        let candidates = [];
+        const textParts = [];
+
+        b.lines.forEach((l, lineIdx) => {
+          textParts.push(l.text);
+          if (lineIdx === 0) {
+            candidates.push(...dateLineCands);
+          } else if (rightSideDateLineCands.length === 0) {
+            // Rule B: Only pull monetary amounts from continuation lines if the Date line itself had NO right-side amounts
+            const contCands = extractDecimalAmountsFromLine(l, lineIdx, pageWidth);
+            candidates.push(...contCands);
+          }
+        });
+
+        if (candidates.length === 0) continue;
+
+        finalizedBlocks.push({
+          id: `txb_${pageNum}_${seq}`,
+          seq: seq++,
+          pageNum: b.pageNum,
+          sourceFile: fileName,
+          isoDate: b.isoDate,
+          displayDate: b.displayDate,
+          narration: textParts.join(' // ').replace(/\s+/g, ' ').slice(0, 180),
+          candidates,
+          learnedBalanceColX,
+          manualCandidateIndex: null,
+          selectedCandidateIndex: 0,
+          selectedBalance: 0
+        });
+      }
+
+      return {
+        blocks: finalizedBlocks,
+        debugLines,
+        detectedBank,
+        learnedBalanceColX,
+        learnedDateColX,
+        nextSeq: seq
+      };
+    }
+
+    function detectIndianBankAndAccountMeta(text) {
+      const bankPatterns = [
+        { regex: /\bIDFC\s*FIRST\b|\bIDFCFIRST\b|\bIDFB0\w{6}\b/i, name: 'IDFC FIRST Bank' },
+        { regex: /\bHDFC\s*BANK\b|\bHDFC0\d{6}\b/i, name: 'HDFC Bank' },
+        { regex: /\bSTATE\s*BANK\s*OF\s*INDIA\b|\bSBIN0\d{6}\b/i, name: 'State Bank of India (SBI)' },
+        { regex: /\bICICI\s*BANK\b|\bICIC0\d{6}\b/i, name: 'ICICI Bank' },
+        { regex: /\bAXIS\s*BANK\b|\bUTIB0\d{6}\b/i, name: 'Axis Bank' },
+        { regex: /\bKOTAK\s*MAHINDRA\b|\bKKBK0\d{6}\b/i, name: 'Kotak Mahindra Bank' },
+        { regex: /\bBANK\s*OF\s*BARODA\b|\bBARB0\w{6}\b/i, name: 'Bank of Baroda' },
+        { regex: /\bPUNJAB\s*NATIONAL\s*BANK\b|\bPUNB0\w{6}\b/i, name: 'Punjab National Bank (PNB)' },
+        { regex: /\bINDUSIND\s*BANK\b|\bINDB0\w{6}\b/i, name: 'IndusInd Bank' },
+        { regex: /\bYES\s*BANK\b|\bYESB0\w{6}\b/i, name: 'Yes Bank' },
+        { regex: /\bUNION\s*BANK\s*OF\s*INDIA\b|\bUBIN0\w{6}\b/i, name: 'Union Bank of India' },
+        { regex: /\bCANARA\s*BANK\b|\bCNRB0\w{6}\b/i, name: 'Canara Bank' },
+        { regex: /\bFEDERAL\s*BANK\b|\bFDRL0\w{6}\b/i, name: 'Federal Bank' },
+        { regex: /\bAU\s*SMALL\s*FINANCE\b|\bAUBL0\w{6}\b/i, name: 'AU Small Finance Bank' }
+      ];
+
+      const accInput = document.getElementById('accountNumber');
+      if (accInput && !accInput.value) {
+        const accMatch = text.match(/(?:Account\s*(?:No|Number|#)|A\/c\s*No\.?|IDFCFIRSTBankstatement_)\s*[:\-]?\s*([0-9X\*]{8,18})/i);
+        if (accMatch) {
+          accInput.value = accMatch[1];
+        }
+      }
+
+      for (const b of bankPatterns) {
+        if (b.regex.test(text)) return b.name;
+      }
+      return '';
+    }
+
+    function isNonTransactionMetadataLine(lineText) {
+      const clean = lineText.trim();
+      if (!clean) return true;
+      if (/^(page\s*\d+|statement\s*of\s*account|account\s*statement|transaction\s*statement)/i.test(clean)) {
+        return true;
+      }
+      if (/\b(statement\s*period|statement\s*from|generated\s*on|printed\s*on|date\s*of\s*birth|summary\s*of\s*account|statement\s*summary|total\s*debits?|total\s*credits?|closing\s*balance\s*as\s*on|end\s*of\s*statement|computer\s*generated|nominee\s*registered|ifsc\s*code|micr\s*code|cust\s*id|disclaimer|registered\s*office)\b/i.test(clean)) {
+        return true;
+      }
+      return false;
+    }
+
+    /**
+     * Universal Indian Bank Date Extractor (Supports IDFC FIRST Bank, HDFC, SBI, ICICI, Axis, Kotak, BoB, PNB):
+     * Inspects the left side of the line (`x <= pageWidth * 0.45`) and matches dates at the start of the line
+     * OR after an optional Serial No (`1`, `02`, `S.No`).
+     */
+    function extractUniversalIndianDateFromLine(line, pageWidth) {
+      let leftText = '';
+      if (line.chunks && line.chunks.length > 0) {
+        const leftChunks = line.chunks.filter(c => c.x <= pageWidth * 0.45);
+        leftText = leftChunks.slice(0, 4).map(c => c.str).join(' ').trim();
+      }
+      if (!leftText) {
+        leftText = line.text.slice(0, 65).trim();
+      }
+
+      // Guard against header metadata dates ("Period: 01/04/2025 to 31/03/2026", "As on 05/04/2025")
+      if (/^(from|to|period|as\s*on|statement|opening|closing|date\s*:|printed|generated|account|customer|branch)\b/i.test(leftText)) {
+        return null;
+      }
+
+      const monthLookup = {
+        jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
+        jul: 6, aug: 7, sep: 8, sept: 8, oct: 9, nov: 10, dec: 11
+      };
+
+      // Strip optional serial number prefix like "1 ", "12. ", "| "
+      const stripped = leftText.replace(/^(?:s\.?no\.?\s*)?(?:\d{1,4}[\.\)]\s*|\d{1,4}\s+|\|\s*)?/i, '').trim();
+
+      // Pattern 1: DD-MMM-YYYY / DD MMM YYYY / DD-MMM-YY / DDMMMYYYY / DD April 2025 (IDFC FIRST, SBI, ICICI, BoB)
+      const alphaRegex = /\b(0?[1-9]|[12][0-9]|3[01])[\s\-\/\.]*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*[\s\-\/\.,]*(\d{4}|\d{2})(?!\d)/i;
+      const mAlpha = stripped.match(alphaRegex);
+      if (mAlpha && mAlpha.index <= 14) {
+        const day = parseInt(mAlpha[1], 10);
+        const mon = monthLookup[mAlpha[2].toLowerCase().slice(0, 3)];
+        let year = parseInt(mAlpha[3], 10);
+        if (year < 100) year += 2000;
+        if (year >= 2010 && year <= 2035 && mon !== undefined) {
+          return { isoDate: formatISODate(year, mon, day), matchedRaw: mAlpha[0].trim() };
+        }
+      }
+
+      // Pattern 2: DD/MM/YYYY or DD-MM-YY or DD.MM.YYYY (2-digit & 4-digit years — HDFC, Axis, Kotak)
+      const numRegex = /\b(0?[1-9]|[12][0-9]|3[01])[\/\-\.](0?[1-9]|1[0-2])[\/\-\.](\d{4}|\d{2})(?!\d|[\/\-\.]\d)/;
+      const mNum = stripped.match(numRegex);
+      if (mNum && mNum.index <= 14) {
+        const day = parseInt(mNum[1], 10);
+        const mon = parseInt(mNum[2], 10) - 1;
+        let year = parseInt(mNum[3], 10);
+        if (year < 100) year += 2000;
+        if (year >= 2010 && year <= 2035 && mon >= 0 && mon <= 11) {
+          return { isoDate: formatISODate(year, mon, day), matchedRaw: mNum[0].trim() };
+        }
+      }
+
+      // Pattern 3: ISO YYYY-MM-DD
+      const isoRegex = /\b(20[123]\d)[\/\-](0[1-9]|1[0-2])[\/\-](0[1-9]|[12]\d|3[01])(?!\d)/;
+      const mIso = stripped.match(isoRegex);
+      if (mIso && mIso.index <= 14) {
+        return {
+          isoDate: `${mIso[1]}-${mIso[2]}-${mIso[3]}`,
+          matchedRaw: mIso[0].trim()
+        };
+      }
+
+      // Pattern 4: MMM DD, YYYY (e.g., "Apr 05, 2025")
+      const mdyAlpha = /\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*[\s\-\/\.]*(0?[1-9]|[12][0-9]|3[01])[\s,\-\/\.]*(\d{4}|\d{2})(?!\d)/i;
+      const mMdy = stripped.match(mdyAlpha);
+      if (mMdy && mMdy.index <= 14) {
+        const mon = monthLookup[mMdy[1].toLowerCase().slice(0, 3)];
+        const day = parseInt(mMdy[2], 10);
+        let year = parseInt(mMdy[3], 10);
+        if (year < 100) year += 2000;
+        if (year >= 2010 && year <= 2035 && mon !== undefined) {
+          return { isoDate: formatISODate(year, mon, day), matchedRaw: mMdy[0].trim() };
+        }
+      }
+
+      return null;
+    }
+
+    /**
+     * Extracts monetary amounts (`1,25,000.00`, `125000.00`, `-4500.00`, `45,000.00 Cr`, `(12,400.00)`,
+     * as well as comma-formatted integer balances in the rightmost column like `1,25,000`)
+     * from a visual line's spatial chunks so adjacent Debit/Credit/Balance columns never merge.
+     */
+    function extractDecimalAmountsFromLine(line, lineOffset, pageWidth = 600) {
+      const candidates = [];
+      const sourceChunks = (line.chunks && line.chunks.length > 0)
+        ? line.chunks
+        : line.text.split('|').map((s, idx) => ({ str: s.trim(), x: idx * 120, xRight: (idx + 1) * 120 }));
+
+      // Matches standard decimal amounts (.XX or .X) OR comma-grouped Indian currency amounts in the right-side columns
+      const moneyRegex = /(?:₹|Rs\.?|INR)?\s*([-+(]?\s*(?:(?:\d{1,3}(?:,\d{2,3})+|\d{1,10})\.\d{1,2}|\d{1,3}(?:,\d{2,3})+)\s*[-+)]?)\s*(Cr\.?|Dr\.?|CR|DR)?/gi;
+
+      for (const chunk of sourceChunks) {
+        const str = chunk.str;
+        let match;
+        moneyRegex.lastIndex = 0;
+
+        while ((match = moneyRegex.exec(str)) !== null) {
+          const fullMatched = match[0].trim();
+          const beforeIdx = match.index;
+          const afterIdx = match.index + match[0].length;
+          const charBefore = beforeIdx > 0 ? str[beforeIdx - 1] : '';
+          const charAfter = afterIdx < str.length ? str[afterIdx] : '';
+
+          // Avoid matching dates like 05.04.2025, timestamps like 12.30.45, or long reference numbers
+          if (charBefore === '.' || charBefore === '/' || charBefore === ':' || charBefore === '-' || charAfter === '.' || charAfter === ':' || charAfter === '/') {
+            continue;
+          }
+
+          const rawAmountPart = match[1];
+          // If it's a comma-formatted integer without decimals, only accept it if it sits in the right half of the page
+          if (!rawAmountPart.includes('.') && chunk.xRight < pageWidth * 0.42) {
+            continue;
+          }
+
+          const suffix = (match[2] || '').toUpperCase();
+
+          const isNegativeOrDebit =
+            rawAmountPart.includes('-') ||
+            (rawAmountPart.includes('(') && rawAmountPart.includes(')')) ||
+            suffix.startsWith('DR');
+
+          const cleanDigits = rawAmountPart.replace(/[^0-9.]/g, '');
+          const absValue = parseFloat(cleanDigits);
+          if (isNaN(absValue) || absValue > 50000000000) continue;
+
+          candidates.push({
+            absValue,
+            signedValue: isNegativeOrDebit ? -absValue : absValue,
+            isDr: isNegativeOrDebit,
+            rawText: fullMatched,
+            x: chunk.x,
+            xRight: chunk.xRight,
+            lineOffset
+          });
+        }
+      }
+
+      return candidates;
+    }
+
+    // ============================================================================
+    // 6. DYNAMIC BALANCE COLUMN SELECTOR & CHRONOLOGICAL ORDER EVALUATION
+    // ============================================================================
+    /**
+     * Re-evaluates all parsed Transaction Blocks whenever the user changes:
+     * - Balance Column Selector (`AUTO`, `RIGHTMOST`, `DATE_LINE_LAST`, `SECOND_RIGHT`)
+     * - Statement Row Order (`AUTO`, `ASC`, `DESC`)
+     * - Treat 'Dr' Balance as Negative toggle
+     */
+    function reEvaluateParsedBlocks() {
+      const colRule = document.getElementById('balanceColRuleSelect').value;
+      const orderMode = document.getElementById('statementOrderSelect').value;
+      const treatDrNeg = document.getElementById('treatDrNegativeToggle').checked;
+
+      // 1. Select the Closing Balance candidate for each Transaction Block
+      for (const block of parsedTransactionBlocks) {
+        const cands = block.candidates;
+        if (!cands || cands.length === 0) continue;
+
+        let chosenIdx = 0;
+
+        if (block.manualCandidateIndex !== null && cands[block.manualCandidateIndex]) {
+          chosenIdx = block.manualCandidateIndex;
+        } else if (colRule === 'DATE_LINE_LAST') {
+          const dateLineIndices = cands.map((c, idx) => ({ c, idx })).filter(o => o.c.lineOffset === 0);
+          if (dateLineIndices.length > 0) {
+            chosenIdx = dateLineIndices[dateLineIndices.length - 1].idx;
+          } else {
+            chosenIdx = cands.length - 1;
+          }
+        } else if (colRule === 'SECOND_RIGHT') {
+          const sortedByX = cands.map((c, idx) => ({ c, idx })).sort((a, b) => b.c.xRight - a.c.xRight);
+          chosenIdx = sortedByX.length >= 2 ? sortedByX[1].idx : sortedByX[0].idx;
+        } else if (colRule === 'RIGHTMOST') {
+          let bestIdx = 0;
+          for (let i = 1; i < cands.length; i++) {
+            if (cands[i].xRight >= cands[bestIdx].xRight) bestIdx = i;
+          }
+          chosenIdx = bestIdx;
+        } else {
+          // AUTO: Match learned Balance Header X if available, otherwise rightmost candidate on Date Line (or block)
+          let matchedIdx = -1;
+          if (block.learnedBalanceColX !== null) {
+            let minDiff = 85;
+            for (let i = 0; i < cands.length; i++) {
+              const diff = Math.abs(cands[i].xRight - block.learnedBalanceColX);
+              if (diff <= minDiff) {
+                minDiff = diff;
+                matchedIdx = i;
+              }
+            }
+          }
+          if (matchedIdx !== -1) {
+            chosenIdx = matchedIdx;
+          } else {
+            let bestIdx = 0;
+            for (let i = 1; i < cands.length; i++) {
+              if (cands[i].xRight >= cands[bestIdx].xRight) bestIdx = i;
+            }
+            chosenIdx = bestIdx;
+          }
+        }
+
+        block.selectedCandidateIndex = chosenIdx;
+        const chosenCand = cands[chosenIdx];
+        block.selectedBalance = (chosenCand.isDr && treatDrNeg)
+          ? -Math.abs(chosenCand.absValue)
+          : Math.abs(chosenCand.absValue);
+      }
+
+      // 2. Determine Chronological vs Reverse-Chronological Statement Order
+      let isDescending = false;
+      if (orderMode === 'DESC') {
+        isDescending = true;
+        detectedStatementOrder = 'Newest → Oldest (Reverse)';
+      } else if (orderMode === 'ASC') {
+        isDescending = false;
+        detectedStatementOrder = 'Oldest → Newest (Chronological)';
+      } else {
+        let ascVotes = 0;
+        let descVotes = 0;
+        for (let i = 1; i < parsedTransactionBlocks.length; i++) {
+          const prevD = parsedTransactionBlocks[i - 1].isoDate;
+          const currD = parsedTransactionBlocks[i].isoDate;
+          if (currD > prevD) ascVotes++;
+          else if (currD < prevD) descVotes++;
+        }
+        isDescending = descVotes > ascVotes;
+        detectedStatementOrder = isDescending
+          ? 'Auto: Newest → Oldest'
+          : 'Auto: Oldest → Newest';
+      }
+
+      // 3. Populate Daily EOD Map:
+      // In Oldest -> Newest order, the LAST row of date D is the EOD balance.
+      // In Newest -> Oldest order, the FIRST (top) row of date D is the EOD balance.
+      extractedDailyEODMap.clear();
+      const orderedBlocks = isDescending
+        ? parsedTransactionBlocks.slice().reverse()
+        : parsedTransactionBlocks;
+
+      for (const b of orderedBlocks) {
+        extractedDailyEODMap.set(b.isoDate, {
+          dateStr: b.isoDate,
+          balance: b.selectedBalance,
+          narration: b.narration,
+          sourceFile: b.sourceFile,
+          pageNum: b.pageNum,
+          blockId: b.id
+        });
+      }
+
+      // 4. Rebuild 12-Month ABB Schedule & Update Diagnostics
+      buildScheduleFromDailyEODMap(null);
+      updateDiagnosticsBarUI();
+
+      // Refresh active inspector tab if visible
+      if (!document.getElementById('tabPanel_TRANSACTIONS').classList.contains('hidden')) {
+        renderTransactionsInspectorTable();
+      }
+      if (!document.getElementById('tabPanel_DEBUGGER').classList.contains('hidden')) {
+        renderRawPdfDebugger();
+      }
+    }
+
+    function updateDiagnosticsBarUI() {
+      const totalTx = parsedTransactionBlocks.length;
+      const totalPgs = rawPageDebugLogs.length;
+
+      document.getElementById('headerTxBadge').textContent = totalTx;
+      document.getElementById('tabTxCountPill').textContent = totalTx;
+      document.getElementById('tabPagesCountPill').textContent = `${totalPgs} Pgs`;
+
+      const dot = document.getElementById('diagStatusDot');
+      const statusText = document.getElementById('parserStatusText');
+      const pills = document.getElementById('diagMetricsPills');
+
+      if (totalTx > 0) {
+        dot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-500';
+        statusText.textContent = `Extracted ${totalTx} transactions across ${extractedDailyEODMap.size} unique EOD dates.`;
+        pills.classList.remove('hidden');
+        pills.classList.add('flex');
+
+        document.getElementById('diagBankPill').textContent = `Bank: ${detectedBankGlobal || document.getElementById('bankName').value || 'Detected'}`;
+        document.getElementById('diagOrderPill').textContent = detectedStatementOrder;
+        document.getElementById('diagPagesPill').textContent = `${totalPgs} Page${totalPgs === 1 ? '' : 's'}`;
+        document.getElementById('diagTxCountPill').textContent = `${totalTx} Txns (${extractedDailyEODMap.size} EODs)`;
+
+        const sortedDates = Array.from(extractedDailyEODMap.keys()).sort();
+        if (sortedDates.length > 0) {
+          const firstD = sortedDates[0];
+          const lastD = sortedDates[sortedDates.length - 1];
+          document.getElementById('diagDateRangePill').textContent = `${formatShortHumanDate(firstD)} ${firstD.slice(0, 4)} → ${formatShortHumanDate(lastD)} ${lastD.slice(0, 4)}`;
+        }
+      } else if (totalPgs > 0) {
+        dot.className = 'w-2.5 h-2.5 rounded-full bg-rose-500';
+        statusText.textContent = `Scanned ${totalPgs} page(s) but found 0 transactions in standard text layer. Check Tab 3 Debugger or click "Run OCR".`;
+        pills.classList.add('hidden');
+      }
+    }
+
+    // ============================================================================
+    // 7. BUILT-IN CLIENT-SIDE OCR FALLBACK (TESSERACT.JS v5) FOR SCANNED PDFS
+    // ============================================================================
+    async function ensureTesseractLoaded() {
+      if (window.Tesseract) return window.Tesseract;
+      return new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+        script.onload = () => resolve(window.Tesseract);
+        script.onerror = () => reject(new Error('Failed to load Tesseract.js from CDN'));
+        document.head.appendChild(script);
+      });
+    }
+
+    async function runTesseractOcrOnLoadedFiles() {
+      if (!lastUploadedFilesCache || lastUploadedFilesCache.length === 0) {
+        showToast('Please select a PDF file first before running OCR.', 'warning');
+        return;
+      }
+
+      const banner = document.getElementById('scannedPdfWarningBanner');
+      banner.classList.remove('hidden');
+      const titleEl = document.getElementById('scannedWarningTitle');
+      const descEl = document.getElementById('scannedWarningDesc');
+      const progressWrap = document.getElementById('ocrProgressBarWrap');
+      const progressBar = document.getElementById('ocrProgressBar');
+      progressWrap.classList.remove('hidden');
+      progressBar.style.width = '5%';
+
+      try {
+        titleEl.textContent = 'Loading Tesseract.js v5 Optical Character Recognition Engine...';
+        descEl.textContent = 'Initializing client-side OCR engine in your browser...';
+        const TesseractLib = await ensureTesseractLoaded();
+
+        parsedTransactionBlocks = [];
+        rawPageDebugLogs = [];
+        extractedDailyEODMap.clear();
+        let seq = 1;
+        let password = document.getElementById('pdfPasswordInput').value.trim();
+
+        const canvas = document.getElementById('ocrRenderCanvas');
+        const ctx = canvas.getContext('2d');
+
+        for (const file of lastUploadedFilesCache) {
+          const arrayBuffer = await file.arrayBuffer();
+          const pdfDoc = await loadPdfDocumentWithFallback(arrayBuffer, password);
+
+          for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
+            const pct = Math.round(((pageNum - 1) / pdfDoc.numPages) * 100);
+            progressBar.style.width = `${Math.max(10, pct)}%`;
+            titleEl.textContent = `Running Optical Character Recognition on ${file.name} — Page ${pageNum} of ${pdfDoc.numPages}...`;
+            descEl.textContent = 'Rendering page at 2x high resolution and recognizing dates & closing balances...';
+
+            const page = await pdfDoc.getPage(pageNum);
+            const viewport = page.getViewport({ scale: 2.0 });
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+            await page.render({ canvasContext: ctx, viewport }).promise;
+
+            const { data } = await TesseractLib.recognize(canvas, 'eng');
+            const ocrLines = (data && data.lines) ? data.lines : [];
+
+            const visualLines = ocrLines.map((l, idx) => {
+              const text = (l.text || '').replace(/\n/g, ' ').trim();
+              const words = (l.words || []).map(w => ({
+                str: (w.text || '').trim(),
+                x: w.bbox ? w.bbox.x0 : 0,
+                xRight: w.bbox ? w.bbox.x1 : 100
+              })).filter(w => w.str.length > 0);
+
+              return {
+                y: 2000 - idx * 20,
+                text,
+                chunks: words
+              };
+            }).filter(l => l.text.length > 0);
+
+            const parsedPage = parseVisualLinesIntoBlocks(
+              visualLines,
+              viewport.width,
+              pageNum,
+              file.name + ' (OCR)',
+              seq,
+              null,
+              null
+            );
+
+            seq = parsedPage.nextSeq;
+            if (parsedPage.detectedBank && !detectedBankGlobal) {
+              detectedBankGlobal = parsedPage.detectedBank;
+            }
+            parsedTransactionBlocks.push(...parsedPage.blocks);
+            rawPageDebugLogs.push({
+              fileName: file.name + ' (OCR)',
+              pageNum,
+              charCount: visualLines.reduce((acc, l) => acc + l.text.length, 0),
+              lines: parsedPage.debugLines
+            });
+          }
+        }
+
+        progressBar.style.width = '100%';
+        titleEl.textContent = `OCR Complete! Extracted ${parsedTransactionBlocks.length} Transactions.`;
+        descEl.textContent = 'All 5th, 15th & 25th EOD balances have been updated from the OCR output.';
+
+        reEvaluateParsedBlocks();
+        showToast(`OCR extracted ${parsedTransactionBlocks.length} transactions!`, 'success');
+      } catch (err) {
+        console.error('OCR Error:', err);
+        titleEl.textContent = 'OCR Error: ' + (err.message || 'Could not complete OCR');
+        showToast('OCR failed: ' + (err.message || 'Unknown error'), 'error');
+      }
+    }
+
+    // ============================================================================
+    // 8. EOD CARRY-FORWARD CALCULATION ENGINE (5th, 15th, 25th)
+    // ============================================================================
+    function resolveEODBalanceForTargetDate(targetISO, sortedDatesAsc) {
+      if (extractedDailyEODMap.has(targetISO)) {
+        const rec = extractedDailyEODMap.get(targetISO);
+        return {
+          balance: rec.balance,
+          type: 'exact',
+          sourceDate: formatShortHumanDate(targetISO),
+          isoSource: targetISO,
+          narration: rec.narration || '',
+          blockId: rec.blockId
+        };
+      }
+
+      let bestPriorISO = null;
+      for (let i = 0; i < sortedDatesAsc.length; i++) {
+        if (sortedDatesAsc[i] <= targetISO) {
+          bestPriorISO = sortedDatesAsc[i];
+        } else {
+          break;
+        }
+      }
+
+      if (bestPriorISO) {
+        const rec = extractedDailyEODMap.get(bestPriorISO);
+        return {
+          balance: rec.balance,
+          type: 'carried',
+          sourceDate: formatShortHumanDate(bestPriorISO),
+          isoSource: bestPriorISO,
+          narration: rec.narration || '',
+          blockId: rec.blockId
+        };
+      }
+
+      if (openingBalanceFallback !== null && !isNaN(openingBalanceFallback)) {
+        return {
+          balance: openingBalanceFallback,
+          type: 'carried',
+          sourceDate: 'Opening Bal',
+          isoSource: targetISO,
+          narration: 'Statement Opening Balance',
+          blockId: null
+        };
+      }
+
+      // If statement starts slightly after the 5th of the very first month (e.g. starts 7th Apr), carry earliest transaction of that month
+      if (sortedDatesAsc.length > 0) {
+        const earliestISO = sortedDatesAsc[0];
+        if (earliestISO.slice(0, 7) === targetISO.slice(0, 7)) {
+          const rec = extractedDailyEODMap.get(earliestISO);
+          return {
+            balance: rec.balance,
+            type: 'carried',
+            sourceDate: `1st Tx (${formatShortHumanDate(earliestISO)})`,
+            isoSource: earliestISO,
+            narration: rec.narration || '',
+            blockId: rec.blockId
+          };
+        }
+      }
+
+      return {
+        balance: 0,
+        type: 'empty',
+        sourceDate: 'No Data',
+        isoSource: null,
+        narration: '',
+        blockId: null
+      };
+    }
+
+    function buildScheduleFromDailyEODMap(customMonthsList) {
+      const sortedDatesAsc = Array.from(extractedDailyEODMap.keys()).sort();
+      blockUsageMap.clear();
+
+      let targetMonths = customMonthsList;
+      if (!targetMonths || targetMonths.length === 0) {
+        if (sortedDatesAsc.length > 0) {
+          const firstYM = sortedDatesAsc[0].slice(0, 7).split('-').map(Number);
+          const lastYM = sortedDatesAsc[sortedDatesAsc.length - 1].slice(0, 7).split('-').map(Number);
+
+          const fullContinuousMonths = [];
+          let curY = firstYM[0];
+          let curM = firstYM[1] - 1;
+          const endY = lastYM[0];
+          const endM = lastYM[1] - 1;
+
+          let safety = 0;
+          while ((curY < endY || (curY === endY && curM <= endM)) && safety < 36) {
+            fullContinuousMonths.push({ year: curY, month: curM });
+            curM++;
+            if (curM > 11) {
+              curM = 0;
+              curY++;
+            }
+            safety++;
+          }
+          targetMonths = fullContinuousMonths;
+        } else {
+          targetMonths = [];
+        }
+      }
+
+      abbScheduleRows = targetMonths.map((item, idx) => {
+        const monthLabel = `${MONTH_NAMES_SHORT[item.month]} ${item.year}`;
+        const iso5 = formatISODate(item.year, item.month, 5);
+        const iso15 = formatISODate(item.year, item.month, 15);
+        const iso25 = formatISODate(item.year, item.month, 25);
+
+        const res5 = resolveEODBalanceForTargetDate(iso5, sortedDatesAsc);
+        const res15 = resolveEODBalanceForTargetDate(iso15, sortedDatesAsc);
+        const res25 = resolveEODBalanceForTargetDate(iso25, sortedDatesAsc);
+
+        // Record block usage for Tab 2 Inspector transparency
+        if (res5.blockId) {
+          if (!blockUsageMap.has(res5.blockId)) blockUsageMap.set(res5.blockId, []);
+          blockUsageMap.get(res5.blockId).push(`${monthLabel} (5th)`);
+        }
+        if (res15.blockId) {
+          if (!blockUsageMap.has(res15.blockId)) blockUsageMap.set(res15.blockId, []);
+          blockUsageMap.get(res15.blockId).push(`${monthLabel} (15th)`);
+        }
+        if (res25.blockId) {
+          if (!blockUsageMap.has(res25.blockId)) blockUsageMap.set(res25.blockId, []);
+          blockUsageMap.get(res25.blockId).push(`${monthLabel} (25th)`);
+        }
+
+        const isDefaultIncluded = targetMonths.length <= 12
+          ? true
+          : idx >= targetMonths.length - 12;
+
+        return {
+          id: `row_${Date.now()}_${idx}`,
+          included: isDefaultIncluded,
+          year: item.year,
+          month: item.month,
+          label: monthLabel,
+          bal5: res5.balance,
+          bal15: res15.balance,
+          bal25: res25.balance,
+          meta5: res5,
+          meta15: res15,
+          meta25: res25
+        };
+      });
+
+      renderABBTable();
+      recalculateAll();
+    }
+
+    // ============================================================================
+    // 9. TAB 1: 12-MONTH ABB WORKSHEET RENDERING & INTERACTION
+    // ============================================================================
+    function getBadgeHTML(meta) {
+      if (!meta || meta.type === 'empty') {
+        return `<span class="inline-flex items-center gap-1 text-[10px] font-medium text-slate-400"><span>No Tx</span></span>`;
+      }
+      const safeIso = meta.isoSource || '';
+      const cleanNarr = (meta.narration || '').replace(/"/g, '&quot;');
+      const tooltip = cleanNarr
+        ? `Date Used: ${meta.sourceDate} (${safeIso}) — Narration: ${cleanNarr}`
+        : `Click to inspect ${meta.sourceDate} in Raw Transactions Inspector`;
+
+      if (meta.type === 'exact') {
+        return `<button type="button" onclick="jumpToTransactionInInspector('${safeIso}')" title="${tooltip}" class="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-1.5 py-0.5 rounded border border-emerald-200/80 cursor-pointer transition"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Exact (${meta.sourceDate})</button>`;
+      }
+      if (meta.type === 'carried') {
+        return `<button type="button" onclick="jumpToTransactionInInspector('${safeIso}')" title="${tooltip}" class="inline-flex items-center gap-1 text-[10px] font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 px-1.5 py-0.5 rounded border border-blue-200/80 cursor-pointer transition"><span class="w-1.5 h-1.5 rounded-full bg-blue-500"></span>Fwd (${meta.sourceDate})</button>`;
+      }
+      if (meta.type === 'manual') {
+        return `<span class="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200/80"><span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>Manual Edit</span>`;
+      }
+      return '';
+    }
+
+    function jumpToTransactionInInspector(isoDate) {
+      switchMainTab('TRANSACTIONS');
+      if (isoDate) {
+        const searchInput = document.getElementById('txSearchInput');
+        searchInput.value = isoDate.slice(0, 7);
+        renderTransactionsInspectorTable(isoDate);
+      }
+    }
+
+    function renderABBTable() {
+      const tbody = document.getElementById('abbTableBody');
+      tbody.innerHTML = '';
+
+      if (abbScheduleRows.length === 0) {
+        const emptyRow = document.createElement('tr');
+        emptyRow.innerHTML = `
+          <td colspan="8" class="py-12 px-4 text-center">
+            <div class="max-w-md mx-auto space-y-2">
+              <div class="text-sm font-bold text-slate-700">No Bank Statement Loaded Yet</div>
+              <p class="text-xs text-slate-500">
+                Upload your client's PDF bank statement above to extract real 5th, 15th & 25th closing balances, or click <strong>"Manual 12M Grid"</strong> / <strong>"Load Sample Statement"</strong> to test.
+              </p>
+            </div>
+          </td>
+        `;
+        tbody.appendChild(emptyRow);
+        return;
+      }
+
+      abbScheduleRows.forEach((row, index) => {
+        const tr = document.createElement('tr');
+        tr.id = `tr_${row.id}`;
+        tr.className = `transition-colors ${row.included ? 'hover:bg-slate-50/90 bg-white' : 'bg-slate-50/60 opacity-55'}`;
+
+        const monthlySum = (Number(row.bal5) || 0) + (Number(row.bal15) || 0) + (Number(row.bal25) || 0);
+        const monthlyABB = monthlySum / 3;
+
+        tr.innerHTML = `
+          <td class="py-2.5 pl-3 pr-1 text-center align-top pt-3.5">
+            <input type="checkbox" ${row.included ? 'checked' : ''} onchange="toggleMonthIncluded(${index}, this.checked)" class="rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer" />
+          </td>
+          <td class="py-2.5 px-2 align-top pt-3">
+            <input type="text" value="${row.label}" onchange="updateRowLabel(${index}, this.value)" class="w-full font-bold text-slate-800 bg-transparent border border-transparent hover:border-slate-200 focus:border-indigo-500 focus:bg-white rounded px-1.5 py-1 text-xs sm:text-sm focus:outline-none" />
+          </td>
+          <td class="py-2.5 px-2 text-right align-top">
+            <div class="relative">
+              <input type="number" step="0.01" value="${Number(row.bal5).toFixed(2)}" oninput="updateRowBalance(${index}, 'bal5', this.value)" class="w-full text-right font-mono font-semibold text-slate-900 bg-slate-50/80 hover:bg-white focus:bg-white border border-slate-200 focus:border-indigo-500 rounded-lg px-2.5 py-1.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20" />
+            </div>
+            <div id="badge5_${row.id}" class="mt-1 flex justify-end no-print">${getBadgeHTML(row.meta5)}</div>
+          </td>
+          <td class="py-2.5 px-2 text-right align-top">
+            <div class="relative">
+              <input type="number" step="0.01" value="${Number(row.bal15).toFixed(2)}" oninput="updateRowBalance(${index}, 'bal15', this.value)" class="w-full text-right font-mono font-semibold text-slate-900 bg-slate-50/80 hover:bg-white focus:bg-white border border-slate-200 focus:border-indigo-500 rounded-lg px-2.5 py-1.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20" />
+            </div>
+            <div id="badge15_${row.id}" class="mt-1 flex justify-end no-print">${getBadgeHTML(row.meta15)}</div>
+          </td>
+          <td class="py-2.5 px-2 text-right align-top">
+            <div class="relative">
+              <input type="number" step="0.01" value="${Number(row.bal25).toFixed(2)}" oninput="updateRowBalance(${index}, 'bal25', this.value)" class="w-full text-right font-mono font-semibold text-slate-900 bg-slate-50/80 hover:bg-white focus:bg-white border border-slate-200 focus:border-indigo-500 rounded-lg px-2.5 py-1.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20" />
+            </div>
+            <div id="badge25_${row.id}" class="mt-1 flex justify-end no-print">${getBadgeHTML(row.meta25)}</div>
+          </td>
+          <td class="py-2.5 px-3 text-right align-top pt-3.5 font-mono text-xs sm:text-sm font-semibold text-slate-600 bg-slate-50/80">
+            <span id="rowSum_${row.id}">${formatINR(monthlySum, 0)}</span>
+          </td>
+          <td class="py-2.5 px-3 text-right align-top pt-3.5 font-mono text-xs sm:text-sm font-bold text-indigo-950 bg-indigo-50/40">
+            <div id="rowABB_${row.id}">${formatINR(monthlyABB, 2)}</div>
+            <div id="rowCapNote_${row.id}" class="hidden text-[10px] font-sans font-semibold text-amber-700 mt-0.5"></div>
+          </td>
+          <td class="py-2.5 pl-1 pr-3 text-center align-top pt-3.5 no-print">
+            <button type="button" onclick="deleteMonthRow(${index})" class="text-slate-400 hover:text-rose-600 p-1 rounded hover:bg-rose-50 transition cursor-pointer" title="Remove month">
+              <i data-lucide="trash-2" class="w-4 h-4"></i>
+            </button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      lucide.createIcons();
+    }
+
+    function toggleMonthIncluded(index, isChecked) {
+      if (!abbScheduleRows[index]) return;
+      abbScheduleRows[index].included = isChecked;
+      renderABBTable();
+      recalculateAll();
+    }
+
+    function updateRowLabel(index, newLabel) {
+      if (!abbScheduleRows[index]) return;
+      abbScheduleRows[index].label = newLabel.trim() || `Month ${index + 1}`;
+      recalculateAll();
+    }
+
+    function updateRowBalance(index, field, rawVal) {
+      const row = abbScheduleRows[index];
+      if (!row) return;
+      const numVal = parseFloat(rawVal);
+      row[field] = isNaN(numVal) ? 0 : numVal;
+
+      const metaField = field === 'bal5' ? 'meta5' : field === 'bal15' ? 'meta15' : 'meta25';
+      row[metaField] = { type: 'manual', sourceDate: 'Edited' };
+
+      const badgeContainerId = field === 'bal5' ? `badge5_${row.id}` : field === 'bal15' ? `badge15_${row.id}` : `badge25_${row.id}`;
+      const badgeEl = document.getElementById(badgeContainerId);
+      if (badgeEl) badgeEl.innerHTML = getBadgeHTML(row[metaField]);
+
+      recalculateAll();
+    }
+
+    function addNewMonthRow() {
+      let nextYear = 2025;
+      let nextMonth = 3;
+      if (abbScheduleRows.length > 0) {
+        const last = abbScheduleRows[abbScheduleRows.length - 1];
+        nextMonth = (last.month + 1) % 12;
+        nextYear = last.month === 11 ? last.year + 1 : last.year;
+      }
+
+      abbScheduleRows.push({
+        id: `row_${Date.now()}_${abbScheduleRows.length}`,
+        included: true,
+        year: nextYear,
+        month: nextMonth,
+        label: `${MONTH_NAMES_SHORT[nextMonth]} ${nextYear}`,
+        bal5: 0,
+        bal15: 0,
+        bal25: 0,
+        meta5: { type: 'manual', sourceDate: 'Manual' },
+        meta15: { type: 'manual', sourceDate: 'Manual' },
+        meta25: { type: 'manual', sourceDate: 'Manual' }
+      });
+
+      renderABBTable();
+      recalculateAll();
+    }
+
+    function deleteMonthRow(index) {
+      abbScheduleRows.splice(index, 1);
+      renderABBTable();
+      recalculateAll();
+    }
+
+    function clearAllWorkspaceData() {
+      parsedTransactionBlocks = [];
+      rawPageDebugLogs = [];
+      extractedDailyEODMap.clear();
+      blockUsageMap.clear();
+      openingBalanceFallback = null;
+      abbScheduleRows = [];
+      document.getElementById('uploadedFilesList').innerHTML = '';
+      document.getElementById('scannedPdfWarningBanner').classList.add('hidden');
+      document.getElementById('headerTxBadge').textContent = '0';
+      document.getElementById('tabTxCountPill').textContent = '0';
+      document.getElementById('tabPagesCountPill').textContent = '0 Pgs';
+      document.getElementById('diagMetricsPills').classList.add('hidden');
+      document.getElementById('parserStatusText').textContent = 'Workspace reset — Upload a PDF bank statement above.';
+      renderABBTable();
+      recalculateAll();
+      showToast('All extracted transactions and balances cleared.', 'info');
+    }
+
+    // ============================================================================
+    // 10. TAB 2: EXTRACTED RAW TRANSACTIONS INSPECTOR RENDERING
+    // ============================================================================
+    function renderTransactionsInspectorTable(highlightIsoDate = null) {
+      const tbody = document.getElementById('txInspectorTableBody');
+      if (!tbody) return;
+      tbody.innerHTML = '';
+
+      const searchVal = (document.getElementById('txSearchInput').value || '').toLowerCase().trim();
+      const filterRole = document.getElementById('txFilterRoleSelect').value;
+
+      if (parsedTransactionBlocks.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="7" class="py-10 text-center text-slate-400 font-sans">
+              No transactions extracted yet. Upload a PDF bank statement above to inspect every extracted row here.
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      // Build set of blockIds that represent the winning daily EOD row
+      const eodBlockIds = new Set();
+      for (const rec of extractedDailyEODMap.values()) {
+        if (rec.blockId) eodBlockIds.add(rec.blockId);
+      }
+
+      let displayedCount = 0;
+      for (let idx = 0; idx < parsedTransactionBlocks.length; idx++) {
+        const block = parsedTransactionBlocks[idx];
+        const isDailyEOD = eodBlockIds.has(block.id);
+        const usedLabels = blockUsageMap.get(block.id) || [];
+
+        if (filterRole === 'EOD' && !isDailyEOD) continue;
+        if (filterRole === 'ABB_USED' && usedLabels.length === 0) continue;
+
+        if (searchVal) {
+          const hay = `${block.isoDate} ${block.displayDate} ${block.narration} ${block.selectedBalance}`.toLowerCase();
+          if (!hay.includes(searchVal)) continue;
+        }
+
+        displayedCount++;
+        const tr = document.createElement('tr');
+        const isHighlighted = highlightIsoDate && block.isoDate === highlightIsoDate && isDailyEOD;
+        tr.className = isHighlighted
+          ? 'bg-emerald-100/90 border-l-4 border-emerald-600'
+          : usedLabels.length > 0
+            ? 'bg-indigo-50/40 hover:bg-indigo-50/80'
+            : 'hover:bg-slate-50';
+
+        // Render clickable chips for all candidate amounts found in this transaction block
+        const candidateChipsHtml = block.candidates.map((cand, cIdx) => {
+          const isSelected = cIdx === block.selectedCandidateIndex;
+          const chipStyle = isSelected
+            ? 'bg-indigo-600 text-white border-indigo-700 font-bold shadow-xs'
+            : 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-indigo-50 hover:border-indigo-300';
+          return `
+            <button type="button"
+                    onclick="selectCandidateForBlock(${idx}, ${cIdx})"
+                    title="X-coord: ${Math.round(cand.xRight)}px | Click to set as Closing Balance for this row"
+                    class="inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[11px] font-mono mr-1 mb-1 cursor-pointer transition ${chipStyle}">
+              <span>${cand.rawText}</span>
+              ${isSelected ? '✓' : ''}
+            </button>
+          `;
+        }).join('');
+
+        const usedBadgeHtml = usedLabels.length > 0
+          ? usedLabels.map(lbl => `<span class="inline-block px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300 text-[10px] font-sans font-bold mr-1 mb-0.5">${lbl}</span>`).join('')
+          : isDailyEOD
+            ? `<span class="text-[10px] font-sans font-semibold text-slate-500">Daily EOD</span>`
+            : `<span class="text-[10px] font-sans text-slate-400">Intraday</span>`;
+
+        tr.innerHTML = `
+          <td class="py-2.5 px-3 text-slate-500">${block.seq}</td>
+          <td class="py-2.5 px-2 text-slate-500 font-sans">Pg ${block.pageNum}</td>
+          <td class="py-2.5 px-3 font-bold text-slate-900">
+            <div>${block.isoDate}</div>
+            <div class="text-[10px] text-slate-400 font-normal">${block.displayDate}</div>
+          </td>
+          <td class="py-2.5 px-3 font-sans text-slate-700 max-w-md break-words">${block.narration}</td>
+          <td class="py-2.5 px-3">${candidateChipsHtml}</td>
+          <td class="py-2.5 px-3 text-right font-bold ${block.selectedBalance < 0 ? 'text-rose-600' : 'text-slate-900'}">
+            ${formatINR(block.selectedBalance)}
+          </td>
+          <td class="py-2.5 px-3 text-center">${usedBadgeHtml}</td>
+        `;
+        tbody.appendChild(tr);
+      }
+
+      if (displayedCount === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="7" class="py-8 text-center text-slate-400 font-sans">
+              No transactions matched your current filter/search.
+            </td>
+          </tr>
+        `;
+      }
+    }
+
+    function selectCandidateForBlock(blockIndex, candidateIndex) {
+      const block = parsedTransactionBlocks[blockIndex];
+      if (!block || !block.candidates[candidateIndex]) return;
+      block.manualCandidateIndex = candidateIndex;
+      reEvaluateParsedBlocks();
+      showToast(`Updated Closing Balance for ${block.isoDate} (#${block.seq})`, 'success');
+    }
+
+    function addManualTransactionRow() {
+      const dateVal = document.getElementById('manualTxDate').value;
+      const balVal = parseFloat(document.getElementById('manualTxBalance').value);
+      const narrVal = document.getElementById('manualTxNarration').value.trim() || 'Manual Consultant Entry';
+
+      if (!dateVal || isNaN(balVal)) {
+        showToast('Please enter both a valid Date and Closing Balance.', 'warning');
+        return;
+      }
+
+      const seq = parsedTransactionBlocks.length + 1;
+      parsedTransactionBlocks.push({
+        id: `txb_manual_${Date.now()}`,
+        seq,
+        pageNum: 1,
+        sourceFile: 'Manual Entry',
+        isoDate: dateVal,
+        displayDate: dateVal,
+        narration: narrVal,
+        candidates: [{
+          absValue: Math.abs(balVal),
+          signedValue: balVal,
+          isDr: balVal < 0,
+          rawText: balVal.toFixed(2),
+          x: 500,
+          xRight: 580,
+          lineOffset: 0
+        }],
+        learnedBalanceColX: 580,
+        manualCandidateIndex: 0,
+        selectedCandidateIndex: 0,
+        selectedBalance: balVal
+      });
+
+      document.getElementById('manualTxBalance').value = '';
+      document.getElementById('manualTxNarration').value = '';
+      reEvaluateParsedBlocks();
+      showToast(`Added EOD balance ${formatINR(balVal)} on ${dateVal}`, 'success');
+    }
+
+    // ============================================================================
+    // 11. TAB 3: RAW PDF TEXT DEBUGGER RENDERING
+    // ============================================================================
+    function renderRawPdfDebugger() {
+      const container = document.getElementById('rawPdfDebuggerContainer');
+      if (!container) return;
+
+      if (rawPageDebugLogs.length === 0) {
+        container.innerHTML = `<div class="text-slate-400 py-8 text-center">No PDF uploaded yet. Upload a PDF above to inspect raw reconstructed lines per page.</div>`;
+        return;
+      }
+
+      container.innerHTML = rawPageDebugLogs.map(pg => {
+        const linesHtml = pg.lines.map((l, idx) => {
+          const rowColor = l.isDateLine
+            ? 'text-emerald-300 bg-emerald-950/60 border-l-2 border-emerald-400 pl-2'
+            : l.isHeaderLine
+              ? 'text-amber-300 bg-amber-950/50 border-l-2 border-amber-400 pl-2 font-bold'
+              : 'text-slate-300 pl-2.5';
+          const safeText = l.text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          return `<div class="py-0.5 ${rowColor}"><span class="text-slate-600 select-none mr-2">${String(idx + 1).padStart(2, '0')}</span>${safeText}</div>`;
+        }).join('');
+
+        return `
+          <div class="border border-slate-800 rounded-xl overflow-hidden bg-slate-900/90">
+            <div class="px-3.5 py-2 bg-slate-800 text-slate-200 flex items-center justify-between text-xs font-sans font-bold">
+              <span>${pg.fileName} — Page ${pg.pageNum}</span>
+              <span class="font-mono text-[11px] text-slate-400">${pg.lines.length} visual lines • ${pg.charCount} chars</span>
+            </div>
+            <div class="p-3 overflow-x-auto space-y-0.5 text-[11px] leading-relaxed">
+              ${linesHtml || '<div class="text-rose-400">0 selectable characters on this page (Scanned image page — click Run Tesseract OCR above)</div>'}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // ============================================================================
+    // 12. CORE ABB & LOAN ELIGIBILITY CALCULATION ENGINE
+    // ============================================================================
+    function recalculateAll() {
+      const useSpikeCap = document.getElementById('toggleSpikeCap').checked;
+      const capBadge = document.getElementById('capRuleActiveBadge');
+      if (useSpikeCap) capBadge.classList.remove('hidden');
+      else capBadge.classList.add('hidden');
+
+      const rawMetrics = abbScheduleRows.map((r, idx) => {
+        const b5 = Number(r.bal5) || 0;
+        const b15 = Number(r.bal15) || 0;
+        const b25 = Number(r.bal25) || 0;
+        const sum = b5 + b15 + b25;
+        const abb = sum / 3;
+        return { idx, id: r.id, included: r.included, label: r.label, b5, b15, b25, sum, rawAbb: abb, effectiveAbb: abb, wasCapped: false };
+      });
+
+      const includedMetrics = rawMetrics.filter(m => m.included);
+
+      if (useSpikeCap && includedMetrics.length > 2) {
+        includedMetrics.forEach(m => {
+          const others = includedMetrics.filter(o => o.id !== m.id);
+          const avgOthers = others.reduce((acc, cur) => acc + cur.rawAbb, 0) / others.length;
+          const maxAllowed = avgOthers * 2.0;
+          if (avgOthers > 0 && m.rawAbb > maxAllowed) {
+            m.effectiveAbb = maxAllowed;
+            m.wasCapped = true;
+          }
+        });
+      }
+
+      rawMetrics.forEach(m => {
+        const sumEl = document.getElementById(`rowSum_${m.id}`);
+        const abbEl = document.getElementById(`rowABB_${m.id}`);
+        const capNoteEl = document.getElementById(`rowCapNote_${m.id}`);
+        if (sumEl) sumEl.textContent = formatINR(m.sum, 0);
+        if (abbEl) abbEl.textContent = formatINR(m.effectiveAbb, 2);
+        if (capNoteEl) {
+          if (m.wasCapped) {
+            capNoteEl.classList.remove('hidden');
+            capNoteEl.textContent = `Capped (Raw: ${formatINR(m.rawAbb, 0)})`;
+          } else {
+            capNoteEl.classList.add('hidden');
+          }
+        }
+      });
+
+      const countIncluded = includedMetrics.length;
+      let sum5 = 0, sum15 = 0, sum25 = 0, grandTotalSum = 0, sumOfMonthlyABBs = 0;
+      let peakMonthObj = null;
+      let lowMonthObj = null;
+      let lowestSinglePoint = null;
+      let negativeOrZeroPoints = 0;
+
+      includedMetrics.forEach(m => {
+        sum5 += m.b5;
+        sum15 += m.b15;
+        sum25 += m.b25;
+        grandTotalSum += m.sum;
+        sumOfMonthlyABBs += m.effectiveAbb;
+
+        if (!peakMonthObj || m.effectiveAbb > peakMonthObj.effectiveAbb) peakMonthObj = m;
+        if (!lowMonthObj || m.effectiveAbb < lowMonthObj.effectiveAbb) lowMonthObj = m;
+
+        [m.b5, m.b15, m.b25].forEach(pt => {
+          if (lowestSinglePoint === null || pt < lowestSinglePoint) lowestSinglePoint = pt;
+          if (pt <= 0) negativeOrZeroPoints++;
+        });
+      });
+
+      const overallABB = countIncluded > 0 ? (sumOfMonthlyABBs / countIncluded) : 0;
+      const avg5 = countIncluded > 0 ? (sum5 / countIncluded) : 0;
+      const avg15 = countIncluded > 0 ? (sum15 / countIncluded) : 0;
+      const avg25 = countIncluded > 0 ? (sum25 / countIncluded) : 0;
+      const avgMonthlySum = countIncluded > 0 ? (grandTotalSum / countIncluded) : 0;
+
+      const last6Slice = includedMetrics.slice(-6);
+      const firstHalfSlice = includedMetrics.slice(0, Math.max(1, includedMetrics.length - 6));
+      const last3Slice = includedMetrics.slice(-3);
+
+      const last6MABB = last6Slice.length > 0
+        ? last6Slice.reduce((a, c) => a + c.effectiveAbb, 0) / last6Slice.length
+        : 0;
+      const firstHalfABB = firstHalfSlice.length > 0
+        ? firstHalfSlice.reduce((a, c) => a + c.effectiveAbb, 0) / firstHalfSlice.length
+        : 0;
+      const last3MABB = last3Slice.length > 0
+        ? last3Slice.reduce((a, c) => a + c.effectiveAbb, 0) / last3Slice.length
+        : 0;
+
+      let trendPct = 0;
+      if (firstHalfABB > 0 && includedMetrics.length >= 2) {
+        trendPct = ((last6MABB - firstHalfABB) / firstHalfABB) * 100;
+      }
+
+      document.getElementById('footSum5').textContent = formatINR(sum5, 0);
+      document.getElementById('footSum15').textContent = formatINR(sum15, 0);
+      document.getElementById('footSum25').textContent = formatINR(sum25, 0);
+      document.getElementById('footGrandTotalSum').textContent = formatINR(grandTotalSum, 0);
+      document.getElementById('footSumOfMonthlyABBs').textContent = formatINR(sumOfMonthlyABBs, 0);
+
+      document.getElementById('footAvg5').textContent = formatINR(avg5, 0);
+      document.getElementById('footAvg15').textContent = formatINR(avg15, 0);
+      document.getElementById('footAvg25').textContent = formatINR(avg25, 0);
+      document.getElementById('footAvgMonthlySum').textContent = formatINR(avgMonthlySum, 0);
+      document.getElementById('footFinalABB').textContent = formatINR(overallABB, 2);
+
+      document.getElementById('kpiOverallABB').textContent = formatINR(overallABB, 2);
+      document.getElementById('kpiOverallLakhs').textContent = formatLakhs(overallABB);
+      document.getElementById('kpiMonthsCountBadge').textContent = `${countIncluded} Active Month${countIncluded === 1 ? '' : 's'}`;
+
+      document.getElementById('kpiLast6MABB').textContent = formatINR(last6MABB, 2);
+      document.getElementById('kpiLast3MABB').textContent = formatINR(last3MABB, 0);
+
+      const trendBadge = document.getElementById('kpi6MTrendBadge');
+      const trendLabel = document.getElementById('kpiTrendLabel');
+      if (trendPct >= 0) {
+        trendBadge.className = 'px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800';
+        trendBadge.textContent = `+${trendPct.toFixed(1)}%`;
+        trendLabel.textContent = countIncluded > 0 ? 'Growing cashflow' : 'Upload PDF to analyze';
+      } else {
+        trendBadge.className = 'px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800';
+        trendBadge.textContent = `${trendPct.toFixed(1)}%`;
+        trendLabel.textContent = 'Dip in recent 6M';
+      }
+
+      document.getElementById('kpiPeakABB').textContent = peakMonthObj ? formatINR(peakMonthObj.effectiveAbb, 0) : '₹ 0';
+      document.getElementById('kpiPeakMonth').textContent = peakMonthObj ? peakMonthObj.label : '--';
+      document.getElementById('kpiLowABB').textContent = lowMonthObj ? formatINR(lowMonthObj.effectiveAbb, 0) : '₹ 0';
+      document.getElementById('kpiLowMonth').textContent = lowMonthObj ? lowMonthObj.label : '--';
+      document.getElementById('kpiLowestSinglePoint').textContent = lowestSinglePoint !== null ? formatINR(lowestSinglePoint, 0) : '₹ 0';
+
+      const alertChip = document.getElementById('underwritingAlertChip');
+      const alertText = document.getElementById('underwritingAlertText');
+      if (negativeOrZeroPoints > 0 && countIncluded > 0) {
+        alertChip.classList.remove('hidden');
+        alertChip.classList.add('inline-flex');
+        alertText.textContent = `${negativeOrZeroPoints} EOD point(s) ≤ ₹0 (OD / Zero Bal)`;
+      } else {
+        alertChip.classList.add('hidden');
+        alertChip.classList.remove('inline-flex');
+      }
+
+      const policy = document.getElementById('abbPolicySelect').value;
+      let baseABBForLoan = overallABB;
+      if (policy === '6M') baseABBForLoan = last6MABB;
+      else if (policy === 'LOWER') baseABBForLoan = Math.min(overallABB, last6MABB);
+
+      document.getElementById('selectedABBBaseDisplay').textContent = formatINR(baseABBForLoan, 2);
+
+      const emiRatioPct = Math.max(5, Math.min(100, parseFloat(document.getElementById('emiRatioInput').value) || 60));
+      const existingEmi = Math.max(0, parseFloat(document.getElementById('existingEmiInput').value) || 0);
+      const annualROI = Math.max(1, parseFloat(document.getElementById('interestRateInput').value) || 16);
+      const tenureMonths = Math.max(1, parseInt(document.getElementById('loanTenureInput').value, 10) || 36);
+
+      document.getElementById('lblGrossPct').textContent = emiRatioPct;
+      document.getElementById('existingEmiFormatted').textContent = formatINR(existingEmi, 0);
+
+      const grossEmiCapacity = Math.max(0, baseABBForLoan * (emiRatioPct / 100));
+      const netEligibleEmi = Math.max(0, grossEmiCapacity - existingEmi);
+
+      const r = (annualROI / 12) / 100;
+      const n = tenureMonths;
+      let maxEligibleLoan = 0;
+      let emiPerLakh = 0;
+
+      if (r > 0 && n > 0) {
+        const factor = Math.pow(1 + r, n);
+        maxEligibleLoan = netEligibleEmi * ((factor - 1) / (r * factor));
+        emiPerLakh = 100000 * ((r * factor) / (factor - 1));
+      } else if (n > 0) {
+        maxEligibleLoan = netEligibleEmi * n;
+        emiPerLakh = 100000 / n;
+      }
+
+      document.getElementById('valGrossEmiCapacity').textContent = formatINR(grossEmiCapacity, 0);
+      document.getElementById('valLessObligations').textContent = `- ${formatINR(existingEmi, 0)}`;
+      document.getElementById('valNetEligibleEmi').textContent = formatINR(netEligibleEmi, 0);
+      document.getElementById('valLoanPerLakhEmi').textContent = `EMI/Lakh: ${formatINR(emiPerLakh, 0)}`;
+      document.getElementById('valFinalEligibleLoan').textContent = formatINR(maxEligibleLoan, 0);
+      document.getElementById('valFinalLoanInWords').textContent = formatLakhs(maxEligibleLoan);
+
+      document.getElementById('kpiMaxLoanTop').textContent = formatINR(maxEligibleLoan, 0);
+      document.getElementById('kpiEligibleEMITop').textContent = `${formatINR(netEligibleEmi, 0)}/mo`;
+      document.getElementById('kpiLoanLakhsTop').textContent = `${(maxEligibleLoan / 100000).toFixed(2)} L`;
+
+      document.getElementById('mult2x').textContent = formatLakhs(baseABBForLoan * 2);
+      document.getElementById('mult3x').textContent = formatLakhs(baseABBForLoan * 3);
+      document.getElementById('mult4x').textContent = formatLakhs(baseABBForLoan * 4);
+
+      renderVisualBarChart(includedMetrics, peakMonthObj ? peakMonthObj.id : null);
+      document.getElementById('printDateLabel').textContent = `Date: ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}`;
+    }
+
+    function renderVisualBarChart(includedMetrics, peakId) {
+      const container = document.getElementById('abbVisualChart');
+      container.innerHTML = '';
+
+      if (includedMetrics.length === 0) {
+        container.innerHTML = `<div class="w-full text-center text-xs text-slate-400 self-center">Upload a client PDF statement to view the 12-month ABB stability chart.</div>`;
+        return;
+      }
+
+      const maxVal = Math.max(...includedMetrics.map(m => Math.max(0, m.effectiveAbb)), 1);
+
+      includedMetrics.forEach(m => {
+        const pctHeight = Math.max(6, Math.min(100, Math.round((Math.max(0, m.effectiveAbb) / maxVal) * 100)));
+        const isPeak = m.id === peakId;
+        const barColor = isPeak
+          ? 'bg-gradient-to-t from-emerald-600 to-emerald-400'
+          : 'bg-gradient-to-t from-indigo-700 to-indigo-500 hover:from-indigo-600 hover:to-indigo-400';
+
+        const col = document.createElement('div');
+        col.className = 'flex-1 flex flex-col items-center h-full justify-end group relative';
+        col.innerHTML = `
+          <div class="text-[10px] font-mono font-bold text-slate-600 mb-1 opacity-85 group-hover:opacity-100 transition truncate max-w-full">
+            ${(m.effectiveAbb / 100000).toFixed(1)}L
+          </div>
+          <div class="w-full max-w-[42px] rounded-t-lg transition-all duration-300 ${barColor}" style="height: ${pctHeight}%"></div>
+          <div class="text-[10px] font-semibold text-slate-600 mt-1.5 truncate max-w-full">${m.label.split(' ')[0]}</div>
+        `;
+        container.appendChild(col);
+      });
+    }
+
+    // ============================================================================
+    // 13. SIMULATOR CONTROLS, MODALS, DEMO STATEMENT & CSV EXPORT
+    // ============================================================================
+    function syncSlider(type, val) {
+      if (type === 'emiRatio') {
+        document.getElementById('emiRatioInput').value = val;
+        document.getElementById('emiRatioSlider').value = val;
+      }
+      recalculateAll();
+    }
+
+    function setTenure(months) {
+      document.getElementById('loanTenureInput').value = months;
+      recalculateAll();
+    }
+
+    function applyLoanProductPreset() {
+      const prod = document.getElementById('loanProduct').value;
+      const presets = {
+        BL: { roi: 16.0, tenure: 36, ratio: 60 },
+        PL: { roi: 13.5, tenure: 48, ratio: 55 },
+        LAP: { roi: 10.25, tenure: 120, ratio: 70 },
+        HL: { roi: 8.85, tenure: 180, ratio: 65 },
+        WC: { roi: 12.5, tenure: 60, ratio: 65 }
+      };
+      if (presets[prod]) {
+        document.getElementById('interestRateInput').value = presets[prod].roi;
+        document.getElementById('loanTenureInput').value = presets[prod].tenure;
+        syncSlider('emiRatio', presets[prod].ratio);
+      }
+    }
+
+    function openTemplateGeneratorModal() {
+      document.getElementById('templateModal').classList.remove('hidden');
+    }
+    function closeTemplateGeneratorModal() {
+      document.getElementById('templateModal').classList.add('hidden');
+    }
+
+    function generateSequentialMonths() {
+      const startMonth = parseInt(document.getElementById('tplStartMonth').value, 10);
+      const startYear = parseInt(document.getElementById('tplStartYear').value, 10) || 2025;
+      const count = parseInt(document.getElementById('tplMonthCount').value, 10) || 12;
+
+      const monthsList = [];
+      let y = startYear;
+      let m = startMonth;
+      for (let i = 0; i < count; i++) {
+        monthsList.push({ year: y, month: m });
+        m++;
+        if (m > 11) {
+          m = 0;
+          y++;
+        }
+      }
+
+      buildScheduleFromDailyEODMap(monthsList);
+      closeTemplateGeneratorModal();
+      showToast(`Generated ${count}-month schedule starting ${MONTH_NAMES_SHORT[startMonth]} ${startYear}.`, 'success');
+    }
+
+    function openBulkPasteModal() {
+      document.getElementById('bulkPasteModal').classList.remove('hidden');
+    }
+    function closeBulkPasteModal() {
+      document.getElementById('bulkPasteModal').classList.add('hidden');
+    }
+
+    function processBulkPaste() {
+      const raw = document.getElementById('bulkPasteTextarea').value.trim();
+      if (!raw) {
+        showToast('Please paste rows of data first.', 'warning');
+        return;
+      }
+
+      const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      const newRows = [];
+
+      lines.forEach((line, idx) => {
+        const numberMatches = line.match(/-?(?:\d{1,3}(?:,\d{2,3})+|\d+)(?:\.\d{1,2})?/g) || [];
+        const cleanNums = numberMatches.map(s => parseFloat(s.replace(/,/g, ''))).filter(n => !isNaN(n));
+
+        if (cleanNums.length >= 3) {
+          const last3 = cleanNums.slice(-3);
+          const labelPart = line.split(/[\t,]/)[0].trim();
+          const hasAlphaLabel = /[A-Za-z]/.test(labelPart);
+
+          newRows.push({
+            id: `row_paste_${Date.now()}_${idx}`,
+            included: true,
+            year: 2025,
+            month: idx % 12,
+            label: hasAlphaLabel ? labelPart : (abbScheduleRows[idx] ? abbScheduleRows[idx].label : `Month ${idx + 1}`),
+            bal5: last3[0],
+            bal15: last3[1],
+            bal25: last3[2],
+            meta5: { type: 'manual', sourceDate: 'Excel Paste' },
+            meta15: { type: 'manual', sourceDate: 'Excel Paste' },
+            meta25: { type: 'manual', sourceDate: 'Excel Paste' }
+          });
+        }
+      });
+
+      if (newRows.length === 0) {
+        showToast('Could not find 3 balance columns per row. Ensure each line has 5th, 15th, and 25th numbers.', 'error');
+        return;
+      }
+
+      abbScheduleRows = newRows;
+      closeBulkPasteModal();
+      renderABBTable();
+      recalculateAll();
+      showToast(`Applied ${newRows.length} months of balances from clipboard!`, 'success');
+    }
+
+    function loadSampleDemoStatement() {
+      parsedTransactionBlocks = [];
+      rawPageDebugLogs = [];
+      extractedDailyEODMap.clear();
+      blockUsageMap.clear();
+      openingBalanceFallback = 412500;
+      detectedBankGlobal = 'HDFC Bank (Demo)';
+
+      document.getElementById('clientName').value = 'M/s Shree Ganesh Enterprises (Demo)';
+      document.getElementById('bankName').value = 'HDFC Bank';
+      document.getElementById('accountNumber').value = '50200048291044';
+
+      const sampleMonthsConfig = [
+        { y: 2025, m: 3,  tx: [[2, 412500, 'BY NEFT-OPENING RECEIPT'], [5, 468200, 'UPI/CR/CUSTOMER COLL'], [12, 534000, 'NEFT CR-AARTI TRADERS'], [18, 492150, 'CHQ PAID-SUPPLIER'], [25, 518900, 'RTGS CR-SHREEJI CORP'], [29, 488000, 'GST PMT APR']] },
+        { y: 2025, m: 4,  tx: [[3, 524400, 'IMPS CR-CLIENT ADV'], [5, 562800, 'NEFT CR-VIKAS ENT'], [15, 615000, 'RTGS CR-MEHTA SONS'], [22, 578400, 'VENDOR SETTLEMENT'], [28, 594200, 'POS SETTLEMENT CR']] },
+        { y: 2025, m: 5,  tx: [[2, 571000, 'RENT & UTILITY DR'], [8, 632000, 'RTGS CR-INV-409'], [15, 648500, 'NEFT CR-DEALER PAY'], [24, 689000, 'BULK IMPS RECEIPT'], [30, 655000, 'SALARY DISBURSAL']] },
+        { y: 2025, m: 6,  tx: [[5, 672300, 'NEFT CR-KOTHARI LTD'], [13, 712400, 'RTGS CR-ORDER-882'], [19, 664000, 'CUSTOM DUTY PMT'], [25, 704800, 'UPI SETTLEMENT'], [28, 691000, 'ELECTRICITY BILL']] },
+        { y: 2025, m: 7,  tx: [[4, 738000, 'AUG RECEIPT'], [11, 785600, 'RTGS CR-PATEL INFRA'], [15, 842000, 'ADVANCE CR'], [25, 895400, 'WHOLESALE RECEIPTS'], [31, 864000, 'CLOSING ADJ']] },
+        { y: 2025, m: 8,  tx: [[3, 815000, 'VENDOR DR'], [7, 792000, 'INSURANCE RENEWAL'], [15, 748500, 'NEFT CR-NATIONAL CO'], [23, 781200, 'RTGS CR-DIST-12'], [29, 769000, 'STAFF PAYROLL']] },
+        { y: 2025, m: 9,  tx: [[5, 794600, 'UPI/CR/BATCH-05'], [14, 828900, 'NEFT CR-SURAT TEXTILES'], [20, 795000, 'RAW MATERIAL DR'], [25, 846200, 'RTGS CR-BUYER-09'], [30, 831000, 'GST CHALLAN DR']] },
+        { y: 2025, m: 10, tx: [[2, 855000, 'IMPS CR-DISTRIBUTOR'], [10, 812400, 'GODOWN RENT'], [15, 869300, 'RTGS CR-JAIN CORP'], [24, 884100, 'NEFT CR-EXPORT REC'], [29, 872000, 'UTILITY DR']] },
+        { y: 2025, m: 11, tx: [[5, 912500, 'RTGS CR-WINTER ORD'], [12, 876000, 'FREIGHT & LOGISTICS'], [17, 905400, 'NEFT CR-RETAIL HUB'], [25, 938000, 'RTGS CR-PRIME IND'], [31, 919500, 'VENDOR PAYOUT']] },
+        { y: 2026, m: 0,  tx: [[4, 945000, 'NEFT CR-CLIENT-77'], [9, 918200, 'PACKAGING SUPPLIER'], [15, 964800, 'JAN ADVANCE CR'], [23, 982500, 'RTGS CR-METRO MART'], [28, 959000, 'GST PMT JAN']] },
+        { y: 2026, m: 1,  tx: [[5, 994200, 'RTGS CR-FEB ORD'], [14, 1045000, 'BULK DEALER RECEIPT'], [21, 988000, 'INVENTORY PURCHASE'], [25, 1072500, 'RTGS CR-CORPORATE SALE'], [28, 1038000, 'SALARY & BONUS']] },
+        { y: 2026, m: 2,  tx: [[3, 1086000, 'MARCH FY CLOSING CR'], [5, 1124000, 'RTGS CR-APEX TRADERS'], [15, 1185600, 'NEFT CR-WHOLESALE'], [24, 1142000, 'SUPPLIER CLEARANCE'], [31, 1168000, 'FY END CLOSING CR']] }
+      ];
+
+      let seq = 1;
+      sampleMonthsConfig.forEach((mObj, mIdx) => {
+        const debugLines = [];
+        mObj.tx.forEach(([day, bal, narr]) => {
+          const isoDate = formatISODate(mObj.y, mObj.m, day);
+          const dispDate = `${String(day).padStart(2, '0')}/${String(mObj.m + 1).padStart(2, '0')}/${String(mObj.y).slice(-2)}`;
+          const lineText = `${dispDate}  |  ${narr}  |  45,000.00  |  ${bal.toLocaleString('en-IN')}.00`;
+          debugLines.push({ text: lineText, isDateLine: true, isHeaderLine: false });
+
+          parsedTransactionBlocks.push({
+            id: `txb_demo_${seq}`,
+            seq: seq++,
+            pageNum: mIdx + 1,
+            sourceFile: 'Demo_HDFC_Statement.pdf',
+            isoDate,
+            displayDate: dispDate,
+            narration: lineText,
+            candidates: [
+              { absValue: 45000, signedValue: 45000, isDr: false, rawText: '45,000.00', x: 380, xRight: 440, lineOffset: 0 },
+              { absValue: bal, signedValue: bal, isDr: false, rawText: `${bal.toLocaleString('en-IN')}.00`, x: 490, xRight: 575, lineOffset: 0 }
+            ],
+            learnedBalanceColX: 575,
+            manualCandidateIndex: null,
+            selectedCandidateIndex: 1,
+            selectedBalance: bal
+          });
+        });
+
+        rawPageDebugLogs.push({
+          fileName: 'Demo_HDFC_Statement.pdf',
+          pageNum: mIdx + 1,
+          charCount: 450,
+          lines: debugLines
+        });
+      });
+
+      reEvaluateParsedBlocks();
+      showToast('Demo 12-month statement loaded for testing. Upload your own PDF anytime to replace with real client data.', 'info');
+    }
+
+    function exportToCSV() {
+      const client = document.getElementById('clientName').value || 'Client';
+      const bank = document.getElementById('bankName').value || 'Bank';
+      const accNo = document.getElementById('accountNumber').value || '';
+
+      let csv = `BANKING ABB & LOAN ELIGIBILITY WORKSHEET (CAM)\n`;
+      csv += `Applicant Name,"${client.replace(/"/g, '""')}",Bank Name,"${bank.replace(/"/g, '""')}",Account No,"${accNo}"\n\n`;
+      csv += `Included,Month & Year,5th Closing Balance (INR),5th Source,15th Closing Balance (INR),15th Source,25th Closing Balance (INR),25th Source,Monthly Sum (INR),Monthly ABB (INR)\n`;
+
+      const includedRows = abbScheduleRows.filter(r => r.included);
+      let sum5 = 0, sum15 = 0, sum25 = 0, sumMonthlyABB = 0;
+
+      abbScheduleRows.forEach(r => {
+        const b5 = Number(r.bal5) || 0;
+        const b15 = Number(r.bal15) || 0;
+        const b25 = Number(r.bal25) || 0;
+        const mSum = b5 + b15 + b25;
+        const mAbb = mSum / 3;
+
+        if (r.included) {
+          sum5 += b5;
+          sum15 += b15;
+          sum25 += b25;
+          sumMonthlyABB += mAbb;
+        }
+
+        csv += `${r.included ? 'YES' : 'NO'},"${r.label}",${b5.toFixed(2)},"${r.meta5?.sourceDate || ''}",${b15.toFixed(2)},"${r.meta15?.sourceDate || ''}",${b25.toFixed(2)},"${r.meta25?.sourceDate || ''}",${mSum.toFixed(2)},${mAbb.toFixed(2)}\n`;
+      });
+
+      const n = includedRows.length || 1;
+      const finalABB = sumMonthlyABB / n;
+
+      csv += `\nTOTAL (Included Months),${includedRows.length} Months,${sum5.toFixed(2)},,${sum15.toFixed(2)},,${sum25.toFixed(2)},,${(sum5 + sum15 + sum25).toFixed(2)},${sumMonthlyABB.toFixed(2)}\n`;
+      csv += `AVERAGE BANK BALANCE (ABB),Overall,${(sum5 / n).toFixed(2)},,${(sum15 / n).toFixed(2)},,${(sum25 / n).toFixed(2)},,${((sum5 + sum15 + sum25) / n).toFixed(2)},${finalABB.toFixed(2)}\n\n`;
+
+      csv += `LOAN ELIGIBILITY SUMMARY\n`;
+      csv += `Selected ABB Base,${document.getElementById('selectedABBBaseDisplay').textContent.replace(/[^\d.-]/g, '')}\n`;
+      csv += `Net Eligible Monthly EMI,${document.getElementById('valNetEligibleEmi').textContent.replace(/[^\d.-]/g, '')}\n`;
+      csv += `Max Eligible Loan Amount,${document.getElementById('valFinalEligibleLoan').textContent.replace(/[^\d.-]/g, '')}\n`;
+
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `ABB_CAM_${client.replace(/[^a-zA-Z0-9]/g, '_')}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast('Exported CAM Worksheet to Excel CSV.', 'success');
+    }
+
+    // ============================================================================
+    // 14. INITIALIZATION ON WINDOW LOAD (STARTS CLEAN — NO FAKE NUMBERS)
+    // ============================================================================
+    window.onload = function () {
+      lucide.createIcons();
+      setupDragAndDrop();
+      renderABBTable();
+      recalculateAll();
+    };
+  </script>
+</body>
+</html>
